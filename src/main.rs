@@ -60,6 +60,7 @@ impl WorkingImage {
             .diff_ids_mut()
             .push(layer.diff_id.clone());
         self.configuration.history_mut().push(History::default());
+        self.manifest.layers_mut().push(layer.descriptor.clone());
         self.own_layers.push(layer);
     }
 
