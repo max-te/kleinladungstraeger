@@ -1,0 +1,26 @@
+[package]
+name = "kleinladungstraeger"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "klt"
+path = "src/main.rs"
+
+
+[dependencies]
+reqwest = { version = "0.11.23", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+oci-spec = "0.6.5"
+flate2 = "1.0.28"
+tar = "0.4.40"
+sha2 = "0.10.8"
+base16ct = { version = "0.2.0", features = ["std"] }
+futures = "0.3.30"
+miette = { version = "5.10", features = ["fancy"] }
+bytes = "1.5.0"
+toml = "0.8.10"
+shellexpand = "3.1.0"
+secrecy = { version = "0.8.0", features = ["serde"] }
