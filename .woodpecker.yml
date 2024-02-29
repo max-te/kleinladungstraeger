@@ -3,4 +3,11 @@ steps:
   build:
     image: rust:1.76
     commands:
-      - cargo build
+      - cargo build --release
+  publish:
+    image: clearlinux:base
+    commands:
+      - mkdir -p ./target/docker
+      - cp ./target/release/klt ./target/docker/klt
+      - ./target/docker/klt recipe.toml
+    secrets: [gitea_token]
