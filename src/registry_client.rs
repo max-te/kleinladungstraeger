@@ -4,7 +4,7 @@ use reqwest::{Client, Url};
 use secrecy::ExposeSecret;
 use std::fmt::Display;
 
-use crate::config::Authorization;
+use crate::recipe::Authorization;
 
 pub struct RegistryClient {
     client: reqwest::Client,

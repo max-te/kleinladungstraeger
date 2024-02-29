@@ -1,4 +1,3 @@
-use config::BuilderConfig;
 use futures::stream::FuturesUnordered;
 use futures::TryStreamExt;
 use miette::Result;
@@ -6,13 +5,14 @@ use oci_spec::image::{
     Arch, Config as ExecConfig, Descriptor, History, HistoryBuilder, ImageConfiguration,
     ImageManifest, Os,
 };
+use recipe::Recipe;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::{future::Future, pin::Pin};
 
 mod app_layer;
-mod config;
+mod recipe;
 mod registry_client;
 
 use crate::app_layer::AppLayer;
@@ -30,7 +30,7 @@ async fn ensure_base_layer(
     Ok(())
 }
 
-struct WorkingImage {
+struct PreparationState {
     manifest: ImageManifest,
     configuration: ImageConfiguration,
     base_layers: Vec<Descriptor>,
@@ -38,7 +38,7 @@ struct WorkingImage {
     base_provider: RegistryClient,
 }
 
-impl WorkingImage {
+impl PreparationState {
     fn new(
         manifest: ImageManifest,
         configuration: ImageConfiguration,
@@ -159,37 +159,34 @@ fn flatten<A, B, C, E>(tuple: (Result<A, E>, Result<B, E>, Result<C, E>)) -> Res
 
 #[tokio::main]
 async fn main() {
-    let config_file = std::env::args().nth(1).unwrap_or("config.toml".into());
-    let buildconfig: BuilderConfig = crate::config::load_config(config_file).unwrap();
-    dbg!(&buildconfig);
+    let recipe_file = std::env::args().nth(1).unwrap_or("recipe.toml".into());
+    let recipe: Recipe = crate::recipe::load_recipe(recipe_file).unwrap();
+    dbg!(&recipe);
 
-    let base_provider = RegistryClient::new(
-        &buildconfig.base.registry,
-        &buildconfig.base.repo,
-        &buildconfig.base.auth,
-    )
-    .await
-    .unwrap();
-    let base = base_provider.get_tag_for_target(&buildconfig.base.tag, Arch::Amd64, Os::Linux);
-    let app_layer = AppLayer::build_from_directory(&buildconfig.modification.app_layer_folder);
+    let base_provider =
+        RegistryClient::new(&recipe.base.registry, &recipe.base.repo, &recipe.base.auth)
+            .await
+            .unwrap();
+    let base = base_provider.get_tag_for_target(&recipe.base.tag, Arch::Amd64, Os::Linux);
+    let app_layer = AppLayer::build_from_directory(&recipe.modification.app_layer_folder);
 
     let target_client = RegistryClient::new(
-        &buildconfig.target.registry,
-        &buildconfig.target.repo,
-        &buildconfig.target.auth,
+        &recipe.target.registry,
+        &recipe.target.repo,
+        &recipe.target.auth,
     );
 
     let ((base_image, base_config), app_layer, target_client) =
         flatten(tokio::join!(base, app_layer, target_client)).unwrap();
 
-    let mut image = WorkingImage::new(base_image, base_config, base_provider);
+    let mut image = PreparationState::new(base_image, base_config, base_provider);
 
     image.apply_layer(app_layer);
 
-    buildconfig
+    recipe
         .modification
         .execution_config
         .inspect(|patch| image.patch_execution_config(patch));
 
-    image.push_to(&target_client, buildconfig.target.tag).await;
+    image.push_to(&target_client, recipe.target.tag).await;
 }

@@ -51,7 +51,7 @@ pub struct ImageModification {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct BuilderConfig {
+pub struct Recipe {
     pub base: BaseSource,
     pub target: Target,
     pub modification: ImageModification,
@@ -79,6 +79,6 @@ where
     }
 }
 
-pub fn load_config(file: impl AsRef<Path>) -> Result<BuilderConfig> {
+pub fn load_recipe(file: impl AsRef<Path>) -> Result<Recipe> {
     toml::from_str(&std::fs::read_to_string(file).into_diagnostic()?).into_diagnostic()
 }
