@@ -1,0 +1,6 @@
+---
+steps:
+  build:
+    image: rust:1.76
+    commands:
+      - cargo build
