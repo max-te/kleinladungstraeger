@@ -1,6 +1,6 @@
 use futures::stream::FuturesUnordered;
-use futures::TryStreamExt;
-use miette::Result;
+use futures::{TryFutureExt, TryStreamExt};
+use miette::{Context, Result};
 use oci_spec::image::{
     Arch, Config as ExecConfig, Descriptor, History, HistoryBuilder, ImageConfiguration,
     ImageManifest, Os,
@@ -110,7 +110,7 @@ impl PreparationState {
         self.configuration.set_config(Some(exec_config));
     }
 
-    async fn push_to(mut self, target: &RegistryClient, tag: impl Display) {
+    async fn push_to(mut self, target: &RegistryClient, tag: impl Display) -> Result<()> {
         let tasks: FuturesUnordered<Pin<Box<dyn Future<Output = Result<()>> + Send>>> =
             FuturesUnordered::new();
 
@@ -135,9 +135,10 @@ impl PreparationState {
 
         self.manifest.set_config(conf_desc);
 
-        tasks.try_collect::<Vec<()>>().await.unwrap();
+        tasks.try_collect::<Vec<()>>().await?;
 
-        target.upload_manifest(self.manifest, tag).await.unwrap();
+        target.upload_manifest(self.manifest, tag).await?;
+        Ok(())
     }
 }
 
@@ -158,27 +159,31 @@ fn flatten<A, B, C, E>(tuple: (Result<A, E>, Result<B, E>, Result<C, E>)) -> Res
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     better_panic::install();
     let recipe_file = std::env::args().nth(1).unwrap_or("recipe.toml".into());
-    let recipe: Recipe = crate::recipe::load_recipe(recipe_file).unwrap();
+    let recipe: Recipe = crate::recipe::load_recipe(recipe_file)?;
     dbg!(&recipe);
 
     let base_provider =
         RegistryClient::new(&recipe.base.registry, &recipe.base.repo, &recipe.base.auth)
             .await
-            .unwrap();
-    let base = base_provider.get_tag_for_target(&recipe.base.tag, Arch::Amd64, Os::Linux);
-    let app_layer = AppLayer::build_from_directory(&recipe.modification.app_layer_folder);
+            .context("creating base image registry client")?;
+    let base = base_provider
+        .get_tag_for_target(&recipe.base.tag, Arch::Amd64, Os::Linux)
+        .map_err(|e| e.context("getting base image"));
+    let app_layer = AppLayer::build_from_directory(&recipe.modification.app_layer_folder)
+        .map_err(|e| e.context("building app layer"));
 
     let target_client = RegistryClient::new(
         &recipe.target.registry,
         &recipe.target.repo,
         &recipe.target.auth,
-    );
+    )
+    .map_err(|e| e.context("creating target registry client"));
 
     let ((base_image, base_config), app_layer, target_client) =
-        flatten(tokio::join!(base, app_layer, target_client)).unwrap();
+        flatten(tokio::join!(base, app_layer, target_client))?;
 
     let mut image = PreparationState::new(base_image, base_config, base_provider);
 
@@ -189,5 +194,9 @@ async fn main() {
         .execution_config
         .inspect(|patch| image.patch_execution_config(patch));
 
-    image.push_to(&target_client, recipe.target.tag).await;
+    image
+        .push_to(&target_client, recipe.target.tag)
+        .await
+        .with_context(|| "pushing image")?;
+    Ok(())
 }

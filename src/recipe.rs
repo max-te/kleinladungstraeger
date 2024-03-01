@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use miette::{IntoDiagnostic, Result};
+use miette::{Context, IntoDiagnostic, Result};
 use oci_spec::image::Config as ExecConfig;
 use secrecy::SecretString;
 use serde::Deserialize;
@@ -80,5 +80,11 @@ where
 }
 
 pub fn load_recipe(file: impl AsRef<Path>) -> Result<Recipe> {
-    toml::from_str(&std::fs::read_to_string(file).into_diagnostic()?).into_diagnostic()
+    toml::from_str(
+        &std::fs::read_to_string(file)
+            .into_diagnostic()
+            .context("Failed to read recipe")?,
+    )
+    .into_diagnostic()
+    .context("Failed to parse recipe")
 }
