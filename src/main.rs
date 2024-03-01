@@ -159,6 +159,7 @@ fn flatten<A, B, C, E>(tuple: (Result<A, E>, Result<B, E>, Result<C, E>)) -> Res
 
 #[tokio::main]
 async fn main() {
+    better_panic::install();
     let recipe_file = std::env::args().nth(1).unwrap_or("recipe.toml".into());
     let recipe: Recipe = crate::recipe::load_recipe(recipe_file).unwrap();
     dbg!(&recipe);
