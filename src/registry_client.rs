@@ -1,9 +1,9 @@
 use miette::{IntoDiagnostic, Result};
 use oci_spec::image::{ImageConfiguration, ImageIndex, ImageManifest, MediaType};
-use reqwest::{Client, Url};
+use reqwest::{header::CONTENT_TYPE, Client, Url};
 use secrecy::ExposeSecret;
 use std::fmt::Display;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::recipe::Authorization;
 
@@ -13,13 +13,87 @@ pub struct RegistryClient {
     repo: String,
 }
 
+// pub enum ClientScope {
+//     Push,
+//     Pull,
+// }
+
+// impl Display for ClientScope {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         match self {
+//             ClientScope::Push => write!(f, "push"),
+//             ClientScope::Pull => write!(f, "pull"),
+//         }
+//     }
+// }
+
 impl RegistryClient {
-    pub fn anonymous(registry: impl ToString, repo: impl ToString) -> Self {
-        Self {
-            client: Client::default(),
-            registry: registry.to_string(),
-            repo: repo.to_string(),
+    #[tracing::instrument(skip_all)]
+    async fn probe_for_token_endpoint(
+        registry: impl ToString,
+        repo: impl ToString,
+    ) -> Result<String> {
+        let registry = registry.to_string();
+        let repo = repo.to_string();
+        let url = Url::parse(&format!("https://{registry}/v2/{repo}/manifests/latest"))
+            .into_diagnostic()?;
+
+        let resp = reqwest::get(url).await.into_diagnostic()?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            if let Some(wwwauth) = resp.headers().get("WWW-Authenticate") {
+                let captures = regex::Regex::new(r#"Bearer realm="([^"]+)",service="([^"]+)""#)
+                    .unwrap()
+                    .captures(wwwauth.to_str().unwrap())
+                    .unwrap();
+                let realm = captures.get(1).unwrap().as_str();
+                let service = captures.get(2).unwrap().as_str();
+                debug!("Found WWW-Authenticate realm: {realm} in {wwwauth:?}");
+                Ok(Url::parse_with_params(realm, [("service", service)])
+                    .unwrap()
+                    .to_string())
+            } else {
+                Err(miette::miette!("No WWW-Authenticate header"))
+            }
+        } else {
+            Ok(format!("https://{registry}/v2/token"))
         }
+    }
+
+    #[tracing::instrument(skip_all)]
+    pub async fn anonymous(registry: impl ToString, repo: impl ToString) -> Result<Self> {
+        let registry = registry.to_string();
+        let repo = repo.to_string();
+        let realm = Self::probe_for_token_endpoint(&registry, &repo).await?;
+        let token_url =
+            Url::parse_with_params(&realm, [("scope", format!("repository:{repo}:pull"))])
+                .into_diagnostic()?;
+
+        let token_resp = Client::default()
+            .get(token_url)
+            .send()
+            .await
+            .into_diagnostic()?
+            .error_for_status()
+            .into_diagnostic()?
+            .json::<serde_json::Value>()
+            .await
+            .into_diagnostic()?;
+        let token = token_resp.get("token").unwrap().as_str().unwrap();
+        debug!("Anonymous token: {token}");
+
+        let client = Client::builder()
+            .default_headers(reqwest::header::HeaderMap::from_iter([(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {token}").parse().unwrap(),
+            )]))
+            .build()
+            .into_diagnostic()?;
+
+        Ok(Self {
+            client,
+            registry,
+            repo,
+        })
     }
 
     #[tracing::instrument(skip_all)]
@@ -77,7 +151,7 @@ impl RegistryClient {
             Authorization::Token(token) => {
                 RegistryClient::with_basic_auth(registry, repo, "", token.expose_secret()).await
             }
-            Authorization::None => Ok(RegistryClient::anonymous(registry, repo)),
+            Authorization::None => RegistryClient::anonymous(registry, repo).await,
         }
     }
 
@@ -86,24 +160,26 @@ impl RegistryClient {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn get_index(&self, tag: impl Display) -> Result<ImageIndex> {
+    pub async fn get_index_or_manifest(&self, tag: impl Display) -> Result<ImageIndex> {
         info!(
             "fetching index for {}/{}:{}",
             &self.registry, &self.repo, tag
         );
-        self.client
+        self
+            .client
             .get(
                 self.repo_url()?
                     .join(&format!("manifests/{}", tag))
                     .into_diagnostic()?,
             )
-            .header("Accept", String::from(MediaType::ImageIndex))
+            .header("Accept", "application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json")
             .send()
             .await
+            .inspect(|resp| debug!("get_index: {resp:?}"))
             .into_diagnostic()?
             .error_for_status()
             .into_diagnostic()?
-            .json::<ImageIndex>()
+            .json()
             .await
             .into_diagnostic()
     }
@@ -157,7 +233,7 @@ impl RegistryClient {
         arch: oci_spec::image::Arch,
         os: oci_spec::image::Os,
     ) -> Result<(ImageManifest, ImageConfiguration)> {
-        let index = self.get_index(tag).await?;
+        let index = self.get_index_or_manifest(tag).await?;
         let manifest_descriptor = index
             .manifests()
             .iter()

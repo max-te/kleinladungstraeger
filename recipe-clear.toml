@@ -1,0 +1,16 @@
+[base]
+registry = "registry-1.docker.io"
+repo = "library/clearlinux"
+tag = "base"
+
+[target]
+registry = "git.jmteegen.eu"
+repo = "max/kleinladungstraeger"
+tag = "clear"
+auth = "$GITEA_TOKEN"
+
+[modification]
+app_layer_folder = "target/docker"
+
+[modification.execution_config]
+Cmd = ["/klt"]

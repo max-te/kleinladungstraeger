@@ -10,4 +10,5 @@ steps:
       - mkdir -p ./target/docker
       - cp ./target/release/klt ./target/docker/klt
       - ./target/docker/klt recipe.toml
+      - ./target/docker/klt recipe-clear.toml
     secrets: [gitea_token]
