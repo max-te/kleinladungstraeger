@@ -1,6 +1,6 @@
 use futures::stream::FuturesUnordered;
 use futures::{TryFutureExt, TryStreamExt};
-use miette::{Context, Result};
+use miette::{Context, IntoDiagnostic, Result};
 use oci_spec::image::{
     Arch, Config as ExecConfig, Descriptor, HistoryBuilder, ImageConfiguration, ImageManifest, Os,
 };
@@ -9,6 +9,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::{future::Future, pin::Pin};
+use tracing::debug;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 mod app_layer;
 mod recipe;
@@ -114,6 +116,7 @@ impl PreparationState {
         self.configuration.set_config(Some(exec_config));
     }
 
+    #[tracing::instrument(skip_all)]
     async fn push_to(mut self, target: &RegistryClient, tag: impl Display) -> Result<()> {
         let tasks: FuturesUnordered<Pin<Box<dyn Future<Output = Result<()>> + Send>>> =
             FuturesUnordered::new();
@@ -162,12 +165,20 @@ fn flatten<A, B, C, E>(tuple: (Result<A, E>, Result<B, E>, Result<C, E>)) -> Res
     Ok((tuple.0?, tuple.1?, tuple.2?))
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     better_panic::install();
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::try_from_default_env()
+                .or_else(|_| EnvFilter::try_new("info"))
+                .into_diagnostic()?,
+        )
+        .init();
     let recipe_file = std::env::args().nth(1).unwrap_or("recipe.toml".into());
     let recipe: Recipe = crate::recipe::load_recipe(recipe_file)?;
-    dbg!(&recipe);
+    debug!("{:?}", &recipe);
 
     let base_provider =
         RegistryClient::new(&recipe.base.registry, &recipe.base.repo, &recipe.base.auth)

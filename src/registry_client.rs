@@ -3,6 +3,7 @@ use oci_spec::image::{ImageConfiguration, ImageIndex, ImageManifest, MediaType};
 use reqwest::{Client, Url};
 use secrecy::ExposeSecret;
 use std::fmt::Display;
+use tracing::info;
 
 use crate::recipe::Authorization;
 
@@ -21,6 +22,7 @@ impl RegistryClient {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn with_basic_auth(
         registry: impl ToString,
         repo: impl ToString,
@@ -62,6 +64,7 @@ impl RegistryClient {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn new(
         registry: impl ToString,
         repo: impl ToString,
@@ -82,8 +85,9 @@ impl RegistryClient {
         Url::parse(&format!("https://{}/v2/{}/", self.registry, self.repo)).into_diagnostic()
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn get_index(&self, tag: impl Display) -> Result<ImageIndex> {
-        println!(
+        info!(
             "fetching index for {}/{}:{}",
             &self.registry, &self.repo, tag
         );
@@ -104,8 +108,9 @@ impl RegistryClient {
             .into_diagnostic()
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn get_manifest(&self, digest: impl Display) -> Result<ImageManifest> {
-        println!(
+        info!(
             "fetching manifest for {}/{}@{digest}",
             &self.registry, &self.repo
         );
@@ -126,6 +131,7 @@ impl RegistryClient {
             .into_diagnostic()
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn get_config(&self, digest: impl Display) -> Result<ImageConfiguration> {
         self.client
             .get(
@@ -144,6 +150,7 @@ impl RegistryClient {
             .into_diagnostic()
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn get_tag_for_target(
         &self,
         tag: impl Display,
@@ -165,8 +172,9 @@ impl RegistryClient {
         Ok((manifest, config))
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn get_binary_blob(&self, digest: impl Display) -> Result<bytes::Bytes> {
-        println!(
+        info!(
             "downloading blob {digest} from {}/{}",
             self.registry, self.repo
         );
@@ -189,8 +197,9 @@ impl RegistryClient {
         Ok(blob)
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn upload_blob(&self, digest: impl Display, contents: Vec<u8>) -> Result<()> {
-        println!("uploading blob {digest} to {}/{}", self.registry, self.repo);
+        info!("uploading blob {digest} to {}/{}", self.registry, self.repo);
         let upload_location_response = self
             .client
             .post(self.repo_url()?.join("blobs/uploads/").into_diagnostic()?)
@@ -226,6 +235,7 @@ impl RegistryClient {
         Ok(())
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn has_blob(&self, digest: impl Display) -> Result<bool> {
         let resp = self
             .client
@@ -240,8 +250,9 @@ impl RegistryClient {
         Ok(resp.status() == reqwest::StatusCode::OK)
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn upload_manifest(&self, manifest: ImageManifest, tag: impl Display) -> Result<()> {
-        println!(
+        info!(
             "uploading manifest for {}/{}:{}",
             &self.registry, &self.repo, &tag
         );
