@@ -23,13 +23,14 @@ pub struct AppLayer {
     pub contents: Vec<u8>,
     pub descriptor: Descriptor,
     pub diff_id: String,
+    pub created_by: String,
 }
 
 impl AppLayer {
     pub async fn build_from_directory(input_folder: &str) -> Result<AppLayer> {
         let input_folder = std::path::Path::new(input_folder).to_owned();
         tokio::task::spawn_blocking(move || {
-            let contents_plain = tar_folder(input_folder)?;
+            let contents_plain = tar_folder(&input_folder)?;
             let plain_len = contents_plain.len();
             let plain_digest = base16ct::lower::encode_string(&Sha256::digest(&contents_plain));
             println!("App Layer uncompressed size: {plain_len} bytes");
@@ -51,6 +52,7 @@ impl AppLayer {
                 contents,
                 descriptor,
                 diff_id: format!("sha256:{plain_digest}"),
+                created_by: format!("COPY {} /", input_folder.to_str().unwrap()),
             })
         })
         .await

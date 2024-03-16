@@ -2,8 +2,7 @@ use futures::stream::FuturesUnordered;
 use futures::{TryFutureExt, TryStreamExt};
 use miette::{Context, Result};
 use oci_spec::image::{
-    Arch, Config as ExecConfig, Descriptor, History, HistoryBuilder, ImageConfiguration,
-    ImageManifest, Os,
+    Arch, Config as ExecConfig, Descriptor, HistoryBuilder, ImageConfiguration, ImageManifest, Os,
 };
 use recipe::Recipe;
 use sha2::{Digest, Sha256};
@@ -59,7 +58,12 @@ impl PreparationState {
             .rootfs_mut()
             .diff_ids_mut()
             .push(layer.diff_id.clone());
-        self.configuration.history_mut().push(History::default());
+        self.configuration.history_mut().push(
+            HistoryBuilder::default()
+                .created_by(&layer.created_by)
+                .build()
+                .unwrap(),
+        );
         self.manifest.layers_mut().push(layer.descriptor.clone());
         self.own_layers.push(layer);
     }
