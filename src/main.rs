@@ -41,11 +41,24 @@ struct PreparationState {
 
 impl PreparationState {
     fn new(
-        manifest: ImageManifest,
+        mut manifest: ImageManifest,
         configuration: ImageConfiguration,
         base_provider: RegistryClient,
     ) -> Self {
         let base_layers = manifest.layers().clone();
+        manifest.set_media_type(Some(oci_spec::image::MediaType::ImageManifest));
+        manifest
+            .layers_mut()
+            .iter_mut()
+            .filter(|layer| {
+                *layer.media_type()
+                    == oci_spec::image::MediaType::Other(String::from(
+                        "application/vnd.docker.image.rootfs.diff.tar.gzip",
+                    ))
+            })
+            .for_each(|layer| {
+                layer.set_media_type(oci_spec::image::MediaType::ImageLayerGzip);
+            });
         Self {
             manifest,
             configuration,
@@ -208,6 +221,8 @@ async fn main() -> Result<()> {
         .modification
         .execution_config
         .inspect(|patch| image.patch_execution_config(patch));
+
+    debug!("{:?}", &image.manifest);
 
     image
         .push_to(&target_client, recipe.target.tag)
