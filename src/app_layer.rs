@@ -1,5 +1,5 @@
 use flate2::{write::GzEncoder, Compression};
-use miette::{IntoDiagnostic, Result};
+use miette::{Context, IntoDiagnostic, Result};
 use oci_spec::image::Descriptor;
 use sha2::{Digest, Sha256};
 use std::io::Write;
@@ -36,12 +36,13 @@ impl AppLayer {
         tokio::task::spawn_blocking(move || {
             let _entered = thread_span.entered();
 
-            let contents_plain = tar_folder(&input_folder)?;
+            info!("building app layer from {input_folder:?}");
+            let contents_plain = tar_folder(&input_folder).with_context(|| format!("tarring {input_folder:?}"))?;
             let plain_len = contents_plain.len();
             let plain_digest = base16ct::lower::encode_string(&Sha256::digest(&contents_plain));
             info!("App Layer uncompressed size: {plain_len} bytes");
 
-            let contents = gzip(contents_plain)?;
+            let contents = gzip(contents_plain).with_context(|| "gzipping tarred contents")?;
             let layer_digest = base16ct::lower::encode_string(&Sha256::digest(&contents));
             let layer_size = contents.len();
             info!(
@@ -58,10 +59,10 @@ impl AppLayer {
                 contents,
                 descriptor,
                 diff_id: format!("sha256:{plain_digest}"),
-                created_by: format!("COPY {} /", input_folder.to_str().unwrap()),
+                created_by: format!("KLT COPY {}/* /", input_folder.to_str().unwrap()),
             })
         })
         .await
-        .into_diagnostic()?
+        .into_diagnostic().with_context(|| "building app layer")?
     }
 }
