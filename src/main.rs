@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::{future::Future, pin::Pin};
-use tracing::debug;
+use tracing::{debug, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 mod app_layer;
@@ -25,8 +25,11 @@ async fn ensure_base_layer(
     digest: &str,
 ) -> Result<()> {
     if !target.has_blob(digest).await? {
+        info!("base layer {digest} is not known at target, copying from upstream");
         let layer = provider.get_binary_blob(&digest).await?.to_vec();
         target.upload_blob(digest, layer).await?;
+    } else {
+        info!("base layer {digest} is already known at target");
     }
     Ok(())
 }
@@ -90,47 +93,60 @@ impl PreparationState {
             .as_ref()
             .cloned()
             .unwrap_or_default();
-        if patch.user().is_some() {
-            exec_config.set_user(patch.user().clone());
+        if let Some(user) = patch.user() {
+            info!("setting user to {}", user);
+            exec_config.set_user(Some(user.clone()));
         }
-        if patch.working_dir().is_some() {
-            exec_config.set_working_dir(patch.working_dir().clone());
+        if let Some(working_dir) = patch.working_dir() {
+            info!("setting working dir to {}", working_dir);
+            exec_config.set_working_dir(Some(working_dir.clone()));
         }
-        if patch.cmd().is_some() {
-            exec_config.set_cmd(patch.cmd().clone());
+        if let Some(cmd) = patch.cmd() {
+            info!("setting cmd to {:?}", cmd);
+            exec_config.set_cmd(Some(cmd.clone()));
         }
-        if patch.stop_signal().is_some() {
-            exec_config.set_stop_signal(patch.stop_signal().clone());
+        if let Some(stop_signal) = patch.stop_signal() {
+            info!("setting stop signal to {}", stop_signal);
+            exec_config.set_stop_signal(Some(stop_signal.clone()));
         }
         if let Some(new_ports) = patch.exposed_ports() {
+            info!("adding exposed ports {new_ports:?}");
             let mut ports = exec_config.exposed_ports().clone().unwrap_or_default();
             ports.extend_from_slice(new_ports);
             exec_config.set_exposed_ports(Some(ports));
         }
         if let Some(new_volumes) = patch.volumes() {
+            info!("adding volumes {new_volumes:?}");
             let mut volumes = exec_config.volumes().clone().unwrap_or_default();
             volumes.extend_from_slice(new_volumes);
             exec_config.set_volumes(Some(volumes));
         }
         if let Some(new_env) = patch.env() {
+            info!("adding environment variables {new_env:?}");
             let mut env = exec_config.env().clone().unwrap_or_default();
             env.extend_from_slice(new_env);
             exec_config.set_env(Some(env));
         }
         if let Some(new_labels) = patch.labels() {
+            info!("adding labels {new_labels:?}");
             let mut labels: HashMap<String, String> =
                 exec_config.labels().clone().unwrap_or_default();
             labels.extend(new_labels.iter().map(|(k, v)| (k.clone(), v.clone())));
             exec_config.set_labels(Some(labels));
         }
-        self.configuration
-            .history_mut()
-            .push(HistoryBuilder::default().empty_layer(true).build().unwrap());
+        self.configuration.history_mut().push(
+            HistoryBuilder::default()
+                .empty_layer(true)
+                .created_by(format!("KLT {:?}", exec_config))
+                .build()
+                .unwrap(),
+        );
         self.configuration.set_config(Some(exec_config));
     }
 
     #[tracing::instrument(skip_all)]
     async fn push_to(mut self, target: &RegistryClient, tag: impl Display) -> Result<()> {
+        info!("pushing image to {}/{}:{tag}", target.registry, target.repo);
         let tasks: FuturesUnordered<Pin<Box<dyn Future<Output = Result<()>> + Send>>> =
             FuturesUnordered::new();
 
@@ -225,8 +241,9 @@ async fn main() -> Result<()> {
     debug!("{:?}", &image.manifest);
 
     image
-        .push_to(&target_client, recipe.target.tag)
+        .push_to(&target_client, recipe.target.tag.clone())
         .await
         .with_context(|| "pushing image")?;
+    info!("successfully pushed image to {}/{}:{tag}", target_client.registry, target_client.repo, tag = recipe.target.tag);
     Ok(())
 }

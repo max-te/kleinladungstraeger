@@ -1,6 +1,6 @@
 use miette::{IntoDiagnostic, Result};
 use oci_spec::image::{ImageConfiguration, ImageIndex, ImageManifest, MediaType};
-use reqwest::{header::CONTENT_TYPE, Client, Url};
+use reqwest::{Client, Url};
 use secrecy::ExposeSecret;
 use std::fmt::Display;
 use tracing::{debug, info};
@@ -9,8 +9,8 @@ use crate::recipe::Authorization;
 
 pub struct RegistryClient {
     client: reqwest::Client,
-    registry: String,
-    repo: String,
+    pub registry: String,
+    pub repo: String,
 }
 
 // pub enum ClientScope {
@@ -209,6 +209,10 @@ impl RegistryClient {
 
     #[tracing::instrument(skip_all)]
     pub async fn get_config(&self, digest: impl Display) -> Result<ImageConfiguration> {
+        info!(
+            "fetching config for {}/{}@{digest}",
+            &self.registry, &self.repo
+        );
         self.client
             .get(
                 self.repo_url()?
