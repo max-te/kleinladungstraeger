@@ -1,8 +1,8 @@
 use miette::{IntoDiagnostic, Result};
-use oci_spec::image::{ImageConfiguration, ImageIndex, ImageManifest, MediaType};
+use oci_spec::image::{Digest, ImageConfiguration, ImageIndex, ImageManifest, MediaType};
 use reqwest::{Client, Url};
 use secrecy::ExposeSecret;
-use std::fmt::Display;
+use std::{borrow::Borrow, fmt::Display};
 use tracing::{debug, info};
 
 use crate::recipe::Authorization;
@@ -185,15 +185,15 @@ impl RegistryClient {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn get_manifest(&self, digest: impl Display) -> Result<ImageManifest> {
+    pub async fn get_manifest(&self, digest: impl Borrow<Digest>) -> Result<ImageManifest> {
         info!(
-            "fetching manifest for {}/{}@{digest}",
-            &self.registry, &self.repo
+            "fetching manifest for {}/{}@{}",
+            &self.registry, &self.repo, digest.borrow()
         );
         self.client
             .get(
                 self.repo_url()?
-                    .join(&format!("manifests/{}", digest))
+                    .join(&format!("manifests/{}", digest.borrow()))
                     .into_diagnostic()?,
             )
             .header("Accept", String::from(MediaType::ImageManifest))
@@ -208,15 +208,15 @@ impl RegistryClient {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn get_config(&self, digest: impl Display) -> Result<ImageConfiguration> {
+    pub async fn get_config(&self, digest: impl Borrow<Digest>) -> Result<ImageConfiguration> {
         info!(
-            "fetching config for {}/{}@{digest}",
-            &self.registry, &self.repo
+            "fetching config for {}/{}@{}",
+            &self.registry, &self.repo, digest.borrow()
         );
         self.client
             .get(
                 self.repo_url()?
-                    .join(&format!("blobs/{}", digest))
+                    .join(&format!("blobs/{}", digest.borrow()))
                     .into_diagnostic()?,
             )
             .header("Accept", String::from(MediaType::ImageConfig))
@@ -253,16 +253,16 @@ impl RegistryClient {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn get_binary_blob(&self, digest: impl Display) -> Result<bytes::Bytes> {
+    pub async fn get_binary_blob(&self, digest: impl Borrow<Digest>) -> Result<bytes::Bytes> {
         info!(
-            "downloading blob {digest} from {}/{}",
-            self.registry, self.repo
+            "downloading blob {} from {}/{}",
+            digest.borrow(), self.registry, self.repo
         );
         let blob = self
             .client
             .get(
                 self.repo_url()?
-                    .join(&format!("blobs/{}", digest))
+                    .join(&format!("blobs/{}", digest.borrow()))
                     .into_diagnostic()?,
             )
             .send()
@@ -278,8 +278,8 @@ impl RegistryClient {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn upload_blob(&self, digest: impl Display, contents: Vec<u8>) -> Result<()> {
-        info!("uploading blob {digest} to {}/{}", self.registry, self.repo);
+    pub async fn upload_blob(&self, digest: impl Borrow<Digest>, contents: Vec<u8>) -> Result<()> {
+        info!("uploading blob {} to {}/{}", digest.borrow(), self.registry, self.repo);
         let upload_location_response = self
             .client
             .post(self.repo_url()?.join("blobs/uploads/").into_diagnostic()?)
@@ -301,7 +301,7 @@ impl RegistryClient {
             .unwrap();
         upload_location
             .query_pairs_mut()
-            .append_pair("digest", &format!("{digest}"));
+            .append_pair("digest", &digest.borrow().to_string());
 
         self.client
             .put(upload_location)
@@ -316,12 +316,12 @@ impl RegistryClient {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn has_blob(&self, digest: impl Display) -> Result<bool> {
+    pub async fn has_blob(&self, digest: impl Borrow<Digest>) -> Result<bool> {
         let resp = self
             .client
             .head(
                 self.repo_url()?
-                    .join(&format!("blobs/{}", digest))
+                    .join(&format!("blobs/{}", digest.borrow()))
                     .into_diagnostic()?,
             )
             .send()

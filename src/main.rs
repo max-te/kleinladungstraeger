@@ -2,10 +2,9 @@ use futures::stream::FuturesUnordered;
 use futures::{TryFutureExt, TryStreamExt};
 use miette::{Context, IntoDiagnostic, Result};
 use oci_spec::image::{
-    Arch, Config as ExecConfig, Descriptor, HistoryBuilder, ImageConfiguration, ImageManifest, Os,
+    Arch, Config as ExecConfig, Digest, Descriptor, HistoryBuilder, ImageConfiguration, ImageManifest, Os,
 };
 use recipe::Recipe;
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::{future::Future, pin::Pin};
@@ -22,11 +21,11 @@ use crate::registry_client::RegistryClient;
 async fn ensure_base_layer(
     provider: &RegistryClient,
     target: &RegistryClient,
-    digest: &str,
+    digest: &Digest,
 ) -> Result<()> {
     if !target.has_blob(digest).await? {
         info!("base layer {digest} is not known at target, copying from upstream");
-        let layer = provider.get_binary_blob(&digest).await?.to_vec();
+        let layer = provider.get_binary_blob(digest).await?.to_vec();
         target.upload_blob(digest, layer).await?;
     } else {
         info!("base layer {digest} is already known at target");
@@ -75,7 +74,7 @@ impl PreparationState {
         self.configuration
             .rootfs_mut()
             .diff_ids_mut()
-            .push(layer.diff_id.clone());
+            .push(layer.diff_id.to_string());
         self.configuration.history_mut().push(
             HistoryBuilder::default()
                 .created_by(&layer.created_by)
@@ -160,13 +159,13 @@ impl PreparationState {
 
         for layer in self.own_layers {
             tasks.push(Box::pin(
-                target.upload_blob(layer.descriptor.digest().clone(), layer.contents),
+                target.upload_blob(layer.descriptor.digest().clone(), layer.contents)
             ));
         }
 
         let (conf_bytes, conf_desc) = image_configuration_to_blob(&self.configuration);
         tasks.push(Box::pin(
-            target.upload_blob(conf_desc.digest().clone(), conf_bytes),
+            target.upload_blob(conf_desc.digest().clone(), conf_bytes)
         ));
 
         self.manifest.set_config(conf_desc);
@@ -180,11 +179,11 @@ impl PreparationState {
 
 fn image_configuration_to_blob(config: &ImageConfiguration) -> (Vec<u8>, Descriptor) {
     let config_bytes = config.to_string_pretty().unwrap().as_bytes().to_vec();
-    let config_digest = base16ct::lower::encode_string(&Sha256::digest(&config_bytes));
+    let config_digest = app_layer::sha256_digest(&config_bytes);
     let config_descriptor = Descriptor::new(
         oci_spec::image::MediaType::ImageConfig,
-        config_bytes.len() as i64,
-        format!("sha256:{config_digest}"),
+        config_bytes.len() as u64,
+        config_digest,
     );
 
     (config_bytes, config_descriptor)

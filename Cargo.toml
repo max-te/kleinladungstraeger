@@ -12,7 +12,7 @@ reqwest = { version = "0.12.15", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
-oci-spec = "0.6.8"
+oci-spec = "0.7.1"
 flate2 = "1.1.1"
 tar = "0.4.44"
 sha2 = "0.10.8"
@@ -26,4 +26,4 @@ secrecy = { version = "0.8.0", features = ["serde"] }
 better-panic = "0.3.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-regex = "1.10.6"
+regex = "1.11.1"
