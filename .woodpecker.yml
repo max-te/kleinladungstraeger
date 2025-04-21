@@ -17,6 +17,6 @@ steps:
     commands:
       - mkdir -p ./target/docker/bin
       - cp ./target/release/klt ./target/docker/klt
-      - cp ./target/release/klt ./target/docker/bin/klt
+      - ln -s /klt ./target/docker/bin/klt
       - ./target/docker/klt recipe.toml
       - ./target/docker/klt recipe-clear.toml

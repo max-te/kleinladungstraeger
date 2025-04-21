@@ -8,6 +8,7 @@ use tracing::info;
 fn tar_folder(src_path: impl AsRef<std::path::Path>) -> Result<Vec<u8>> {
     let buf = Vec::new();
     let mut tar = tar::Builder::new(buf);
+    tar.follow_symlinks(false);
     tar.mode(tar::HeaderMode::Deterministic);
     tar.append_dir_all("", src_path).into_diagnostic()?;
     tar.into_inner().into_diagnostic()
