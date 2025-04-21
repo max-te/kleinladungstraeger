@@ -1,14 +1,22 @@
 ---
+when:
+  - event: push
+    branch: ${CI_REPO_DEFAULT_BRANCH}
 steps:
   build:
-    image: rust:1.76
+    image: rust:1.86.0
+    environment:
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: 3
     commands:
       - cargo build --release
   publish:
     image: clearlinux:base
+    environment:
+      GITEA_TOKEN: { from_secret: gitea_token }
     commands:
-      - mkdir -p ./target/docker
+      - mkdir -p ./target/docker/bin
       - cp ./target/release/klt ./target/docker/klt
+      - cp ./target/release/klt ./target/docker/bin/klt
       - ./target/docker/klt recipe.toml
       - ./target/docker/klt recipe-clear.toml
-    secrets: [gitea_token]
