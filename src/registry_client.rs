@@ -103,6 +103,7 @@ impl RegistryClient {
         username: impl Display,
         password: impl Display,
     ) -> Result<Self> {
+        debug!("Creating registry client with basic auth with {username}:{password}");
         let registry = registry.to_string();
         let repo = repo.to_string();
         let token_url = Url::parse_with_params(

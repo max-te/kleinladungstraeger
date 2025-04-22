@@ -6,7 +6,6 @@ use oci_spec::image::{
 };
 use recipe::Recipe;
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::{future::Future, pin::Pin};
 use tracing::{debug, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -136,7 +135,7 @@ impl PreparationState {
         self.configuration.history_mut().push(
             HistoryBuilder::default()
                 .empty_layer(true)
-                .created_by(format!("KLT {:?}", exec_config))
+                .created_by(format!("KLT CONFIG {}", serde_json::to_string(&exec_config).unwrap()))
                 .build()
                 .unwrap(),
         );
@@ -144,8 +143,8 @@ impl PreparationState {
     }
 
     #[tracing::instrument(skip_all)]
-    async fn push_to(mut self, target: &RegistryClient, tag: impl Display) -> Result<()> {
-        info!("pushing image to {}/{}:{tag}", target.registry, target.repo);
+    async fn push_to(mut self, target: &RegistryClient, tags: Vec<String>) -> Result<()> {
+        info!("pushing image to {}/{}:{tags:?}", target.registry, target.repo);
         let tasks: FuturesUnordered<Pin<Box<dyn Future<Output = Result<()>> + Send>>> =
             FuturesUnordered::new();
 
@@ -172,7 +171,12 @@ impl PreparationState {
 
         tasks.try_collect::<Vec<()>>().await?;
 
-        target.upload_manifest(self.manifest, tag).await?;
+        let tasks: FuturesUnordered<Pin<Box<dyn Future<Output = Result<()>> + Send>>> =
+            FuturesUnordered::new();
+        for tag in tags {
+            tasks.push(Box::pin(target.upload_manifest(self.manifest.clone(), tag)));
+        }
+        tasks.try_collect::<Vec<()>>().await?;
         Ok(())
     }
 }
@@ -240,9 +244,9 @@ async fn main() -> Result<()> {
     debug!("{:?}", &image.manifest);
 
     image
-        .push_to(&target_client, recipe.target.tag.clone())
+        .push_to(&target_client, recipe.target.tags())
         .await
         .with_context(|| "pushing image")?;
-    info!("successfully pushed image to {}/{}:{tag}", target_client.registry, target_client.repo, tag = recipe.target.tag);
+    info!("successfully pushed image to {}/{}:{tags:?}", target_client.registry, target_client.repo, tags = recipe.target.tags());
     Ok(())
 }

@@ -1,6 +1,6 @@
 [package]
 name = "kleinladungstraeger"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 
 [[bin]]
@@ -27,3 +27,4 @@ better-panic = "0.3.0"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 regex = "1.11.1"
+serde_with = "3.12.0"

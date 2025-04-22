@@ -6,7 +6,7 @@ tag = "latest"
 [target]
 registry = "git.jmteegen.eu"
 repo = "max/kleinladungstraeger"
-tag = "latest"
+tags = ["latest", "distroless"]
 auth = "$GITEA_TOKEN"
 
 [modification]
