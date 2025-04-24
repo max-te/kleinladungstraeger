@@ -22,7 +22,7 @@ fn flatten<A, B, C, E>(tuple: (Result<A, E>, Result<B, E>, Result<C, E>)) -> Res
 async fn main() -> Result<()> {
     better_panic::install();
     tracing_subscriber::registry()
-        .with(fmt::layer())
+        .with(fmt::layer().without_time())
         .with(
             EnvFilter::try_from_default_env()
                 .or_else(|_| EnvFilter::try_new("info"))
