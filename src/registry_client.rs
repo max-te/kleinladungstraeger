@@ -7,7 +7,7 @@ use tracing::{debug, info};
 
 use crate::recipe::Authorization;
 
-pub struct RegistryClient {
+pub struct RegistryClient<const INSECURE: bool = false> {
     client: reqwest::Client,
     pub registry: String,
     pub repo: String,
@@ -29,14 +29,46 @@ pub struct RegistryClient {
 
 impl RegistryClient {
     #[tracing::instrument(skip_all)]
+    pub async fn new(
+        registry: impl ToString,
+        repo: impl ToString,
+        auth: &Authorization,
+    ) -> Result<Self> {
+        match auth {
+            Authorization::UserPassword(user, pass) => {
+                RegistryClient::<false>::with_basic_auth(registry, repo, user, pass.expose_secret())
+                    .await
+            }
+            Authorization::Token(token) => {
+                RegistryClient::<false>::with_basic_auth(registry, repo, "", token.expose_secret())
+                    .await
+            }
+            Authorization::None => RegistryClient::<false>::anonymous(registry, repo).await,
+        }
+    }
+}
+
+impl<const INSECURE: bool> RegistryClient<INSECURE> {
+    fn scheme() -> &'static str {
+        if INSECURE {
+            "http"
+        } else {
+            "https"
+        }
+    }
+
+    #[tracing::instrument(skip_all)]
     async fn probe_for_token_endpoint(
         registry: impl ToString,
         repo: impl ToString,
     ) -> Result<String> {
         let registry = registry.to_string();
         let repo = repo.to_string();
-        let url = Url::parse(&format!("https://{registry}/v2/{repo}/manifests/latest"))
-            .into_diagnostic()?;
+        let url = Url::parse(&format!(
+            "{scheme}://{registry}/v2/{repo}/manifests/latest",
+            scheme = Self::scheme()
+        ))
+        .into_diagnostic()?;
 
         let resp = reqwest::get(url).await.into_diagnostic()?;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
@@ -55,7 +87,10 @@ impl RegistryClient {
                 Err(miette::miette!("No WWW-Authenticate header"))
             }
         } else {
-            Ok(format!("https://{registry}/v2/token"))
+            Ok(format!(
+                "{scheme}://{registry}/v2/token",
+                scheme = Self::scheme()
+            ))
         }
     }
 
@@ -107,7 +142,7 @@ impl RegistryClient {
         let registry = registry.to_string();
         let repo = repo.to_string();
         let token_url = Url::parse_with_params(
-            &format!("https://{registry}/v2/token"),
+            &format!("{scheme}://{registry}/v2/token", scheme = Self::scheme()),
             [("scope", format!("repository:{repo}:push"))],
         )
         .into_diagnostic()?;
@@ -139,25 +174,14 @@ impl RegistryClient {
         })
     }
 
-    #[tracing::instrument(skip_all)]
-    pub async fn new(
-        registry: impl ToString,
-        repo: impl ToString,
-        auth: &Authorization,
-    ) -> Result<Self> {
-        match auth {
-            Authorization::UserPassword(user, pass) => {
-                RegistryClient::with_basic_auth(registry, repo, user, pass.expose_secret()).await
-            }
-            Authorization::Token(token) => {
-                RegistryClient::with_basic_auth(registry, repo, "", token.expose_secret()).await
-            }
-            Authorization::None => RegistryClient::anonymous(registry, repo).await,
-        }
-    }
-
     fn repo_url(&self) -> Result<Url> {
-        Url::parse(&format!("https://{}/v2/{}/", self.registry, self.repo)).into_diagnostic()
+        Url::parse(&format!(
+            "{}://{}/v2/{}/",
+            Self::scheme(),
+            self.registry,
+            self.repo
+        ))
+        .into_diagnostic()
     }
 
     #[tracing::instrument(skip_all)]
@@ -189,7 +213,9 @@ impl RegistryClient {
     pub async fn get_manifest(&self, digest: impl Borrow<Digest>) -> Result<ImageManifest> {
         info!(
             "fetching manifest for {}/{}@{}",
-            &self.registry, &self.repo, digest.borrow()
+            &self.registry,
+            &self.repo,
+            digest.borrow()
         );
         self.client
             .get(
@@ -212,7 +238,9 @@ impl RegistryClient {
     pub async fn get_config(&self, digest: impl Borrow<Digest>) -> Result<ImageConfiguration> {
         info!(
             "fetching config for {}/{}@{}",
-            &self.registry, &self.repo, digest.borrow()
+            &self.registry,
+            &self.repo,
+            digest.borrow()
         );
         self.client
             .get(
@@ -257,7 +285,9 @@ impl RegistryClient {
     pub async fn get_binary_blob(&self, digest: impl Borrow<Digest>) -> Result<bytes::Bytes> {
         info!(
             "downloading blob {} from {}/{}",
-            digest.borrow(), self.registry, self.repo
+            digest.borrow(),
+            self.registry,
+            self.repo
         );
         let blob = self
             .client
@@ -280,7 +310,12 @@ impl RegistryClient {
 
     #[tracing::instrument(skip_all)]
     pub async fn upload_blob(&self, digest: impl Borrow<Digest>, contents: Vec<u8>) -> Result<()> {
-        info!("uploading blob {} to {}/{}", digest.borrow(), self.registry, self.repo);
+        info!(
+            "uploading blob {} to {}/{}",
+            digest.borrow(),
+            self.registry,
+            self.repo
+        );
         let upload_location_response = self
             .client
             .post(self.repo_url()?.join("blobs/uploads/").into_diagnostic()?)
@@ -302,7 +337,7 @@ impl RegistryClient {
             .unwrap();
         upload_location
             .query_pairs_mut()
-            .append_pair("digest", &digest.borrow().to_string());
+            .append_pair("digest", digest.borrow().as_ref());
 
         self.client
             .put(upload_location)
@@ -349,6 +384,220 @@ impl RegistryClient {
             .into_diagnostic()?
             .error_for_status()
             .into_diagnostic()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oci_spec::image::{Arch, Os};
+    use std::str::FromStr;
+    use test_log::test;
+    use wiremock::{
+        matchers::{method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    const TEST_DIGEST: &str =
+        "sha256:9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a";
+    const CONFIG_DIGEST: &str =
+        "sha256:1010101010101010101010101010101010101010101010101010101010101010";
+
+    #[test(tokio::test)]
+    async fn test_anonymous_client_creation() -> Result<()> {
+        let mock_server = MockServer::start().await;
+        let registry_url = mock_server.uri().replace("http://", "");
+
+        // Mock the probe endpoint
+        Mock::given(method("GET"))
+            .and(path("/v2/test-repo/manifests/latest"))
+            .respond_with(ResponseTemplate::new(401).insert_header(
+                "WWW-Authenticate",
+                format!(
+                    "Bearer realm=\"http://{server}/auth\",service=\"{server}\"",
+                    server = registry_url
+                ),
+            ))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the auth endpoint
+        Mock::given(method("GET"))
+            .and(path("/auth"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "token": "test-token"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = RegistryClient::<true>::anonymous(&registry_url, "test-repo").await?;
+
+        assert_eq!(client.registry, registry_url);
+        assert_eq!(client.repo, "test-repo");
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn test_basic_auth_client_creation() -> Result<()> {
+        let mock_server = MockServer::start().await;
+        let registry_url = mock_server.uri().replace("http://", "");
+
+        // Mock the token endpoint
+        Mock::given(method("GET"))
+            .and(path("/v2/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "token": "test-token"
+            })))
+            .mount(&mock_server)
+            .await;
+        let client = RegistryClient::<true>::with_basic_auth(
+            &registry_url,
+            "test-repo",
+            "username",
+            "password",
+        )
+        .await?;
+
+        assert_eq!(client.registry, registry_url);
+        assert_eq!(client.repo, "test-repo");
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn test_get_tag_for_target() -> Result<()> {
+        let mock_server = MockServer::start().await;
+        let registry_url = mock_server.uri().replace("http://", "");
+
+        // Mock the index response
+        let index_json = serde_json::json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [
+                {
+                    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                    "digest": TEST_DIGEST,
+                    "size": 4,
+                    "platform": {
+                        "architecture": "amd64",
+                        "os": "linux"
+                    }
+                }
+            ]
+        });
+
+        Mock::given(method("GET"))
+            .and(path("/v2/test-repo/manifests/latest"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&index_json))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the manifest response
+        let manifest_json = serde_json::json!({
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": {
+                "mediaType": "application/vnd.oci.image.config.v1+json",
+                "digest": CONFIG_DIGEST,
+                "size": 4
+            },
+            "layers": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path(format!("/v2/test-repo/manifests/{}", TEST_DIGEST)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&manifest_json))
+            .mount(&mock_server)
+            .await;
+
+        // Mock the config response
+        let config_json = serde_json::json!({
+            "architecture": "amd64",
+            "os": "linux",
+            "config": {},
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": []
+            },
+            "history": []
+        });
+
+        Mock::given(method("GET"))
+            .and(path(format!("/v2/test-repo/blobs/{}", CONFIG_DIGEST)))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&config_json))
+            .mount(&mock_server)
+            .await;
+
+        // Create client and test
+        let client = RegistryClient::<true> {
+            client: reqwest::Client::new(),
+            registry: registry_url,
+            repo: "test-repo".to_string(),
+        };
+
+        let (manifest, config) = client
+            .get_tag_for_target("latest", Arch::Amd64, Os::Linux)
+            .await?;
+        assert_eq!(manifest.config().digest().to_string(), CONFIG_DIGEST);
+        assert_eq!(config.architecture(), &Arch::Amd64);
+        assert_eq!(config.os(), &Os::Linux);
+
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn test_blob_operations() -> Result<()> {
+        let mock_server = MockServer::start().await;
+        let registry_url = mock_server.uri().replace("http://", "");
+
+        // Mock blob upload initiation
+        Mock::given(method("POST"))
+            .and(path("/v2/test-repo/blobs/uploads/"))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .insert_header("Location", "/v2/test-repo/blobs/uploads/test-upload"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        // Mock blob upload
+        Mock::given(method("PUT"))
+            .and(path("/v2/test-repo/blobs/uploads/test-upload"))
+            .respond_with(ResponseTemplate::new(201))
+            .mount(&mock_server)
+            .await;
+
+        // Mock blob existence check
+        Mock::given(method("HEAD"))
+            .and(path(format!("/v2/test-repo/blobs/{}", TEST_DIGEST)))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+
+        let client = RegistryClient::<true> {
+            client: reqwest::Client::new(),
+            registry: registry_url,
+            repo: "test-repo".to_string(),
+        };
+
+        // Test upload
+        let digest = Digest::from_str(TEST_DIGEST).unwrap();
+        client.upload_blob(&digest, vec![1, 2, 3, 4]).await?;
+
+        // Mock blob download
+        Mock::given(method("GET"))
+            .and(path(format!("/v2/test-repo/blobs/{}", TEST_DIGEST)))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![1, 2, 3, 4]))
+            .mount(&mock_server)
+            .await;
+
+        // Test existence check
+        assert!(client.has_blob(&digest).await?);
+
+        // Test download
+        let blob = client.get_binary_blob(&digest).await?;
+        assert_eq!(blob.as_ref(), &[1, 2, 3, 4]);
+
         Ok(())
     }
 }
