@@ -38,7 +38,8 @@ impl AppLayer {
             let _entered = thread_span.entered();
 
             info!("building app layer from {input_folder:?}");
-            let contents_plain = tar_folder(&input_folder).with_context(|| format!("tarring {input_folder:?}"))?;
+            let contents_plain =
+                tar_folder(&input_folder).with_context(|| format!("tarring {input_folder:?}"))?;
             let plain_len = contents_plain.len();
             let plain_digest = sha256_digest(&contents_plain);
             info!("App Layer uncompressed size: {plain_len} bytes");
@@ -64,13 +65,80 @@ impl AppLayer {
             })
         })
         .await
-        .into_diagnostic().with_context(|| "building app layer")?
+        .into_diagnostic()
+        .with_context(|| "building app layer")?
     }
 }
 
 pub fn sha256_digest(bytes: &[u8]) -> Digest {
     let digest = Sha256::digest(bytes);
     let digest_str = base16ct::lower::encode_string(&digest);
-    Digest::try_from(format!("sha256:{digest_str}"))
-        .expect("should be valid sha256 digest")
+    Digest::try_from(format!("sha256:{digest_str}")).expect("should be valid sha256 digest")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::io::Write;
+    use tempfile::TempDir;
+    use test_log::test;
+
+    #[test]
+    fn test_sha256_digest() {
+        let data = b"test data";
+        let digest = sha256_digest(data);
+        assert_eq!(
+            digest.to_string(),
+            "sha256:916f0027a575074ce72a331777c3478d6513f786a591bd892da1a577bf2335f9"
+        );
+    }
+
+    #[test]
+    fn test_gzip() -> miette::Result<()> {
+        let input = b"test data".repeat(1000).to_vec();
+        let compressed = gzip(input.clone())?;
+        assert!(!compressed.is_empty());
+        assert!(compressed.len() < input.len() * 2); // Compressed size should be reasonable
+        assert_eq!(&compressed[0..2], [0x1f, 0x8b]); // gzip magic number
+        Ok(())
+    }
+
+    #[test]
+    fn test_tar_folder() -> std::io::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let test_file_path = temp_dir.path().join("test.txt");
+        let mut test_file = fs::File::create(test_file_path)?;
+        test_file.write_all(b"test content")?;
+
+        let tarred = tar_folder(temp_dir.path()).unwrap();
+        assert!(!tarred.is_empty());
+
+        // Basic validation of tar format
+        assert_eq!(&tarred[257..262], b"ustar"); // tar magic number
+        Ok(())
+    }
+
+    #[test(tokio::test)]
+    async fn test_app_layer_build() -> std::io::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let test_file_path = temp_dir.path().join("test.txt");
+        let test_content = b"test content";
+        let mut test_file = fs::File::create(test_file_path)?;
+        test_file.write_all(test_content)?;
+
+        let app_layer = AppLayer::build_from_directory(temp_dir.path().to_str().unwrap())
+            .await
+            .unwrap();
+
+        assert!(!app_layer.contents.is_empty());
+        assert_eq!(
+            app_layer.descriptor.media_type(),
+            &oci_spec::image::MediaType::ImageLayerGzip
+        );
+        assert!(app_layer.created_by.contains("KLT COPY"));
+        assert_ne!(app_layer.descriptor.digest(), &app_layer.diff_id);
+
+        Ok(())
+    }
 }
