@@ -10,6 +10,7 @@ steps:
       CARGO_BUILD_JOBS: 3
     commands:
       - cargo build --release
+      - cargo test
   publish:
     image: clearlinux:base
     environment:
