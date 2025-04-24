@@ -952,6 +952,7 @@ dependencies = [
  "sha2",
  "shellexpand",
  "tar",
+ "tempfile",
  "tokio",
  "toml",
  "tracing",
