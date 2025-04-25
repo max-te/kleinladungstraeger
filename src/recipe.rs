@@ -6,8 +6,6 @@ use secrecy::SecretString;
 use serde::Deserialize;
 use serde::{de::Error, Deserializer};
 use serde_with::{serde_as, DeserializeAs};
-use std::fmt::Display;
-use std::str::FromStr;
 
 #[serde_as]
 #[derive(Deserialize, Debug, Clone, Default)]
@@ -86,8 +84,7 @@ struct ShellExpanded;
 
 impl<'de, T> DeserializeAs<'de, T> for ShellExpanded
 where
-    T: FromStr + serde::Deserialize<'de>,
-    <T as FromStr>::Err: Display,
+    T: From<String> + serde::Deserialize<'de>,
 {
     fn deserialize_as<D>(deserializer: D) -> Result<T, D::Error>
     where
@@ -95,7 +92,7 @@ where
     {
         let s = String::deserialize(deserializer).map_err(Error::custom)?;
         let expanded = shellexpand::env(&s).map_err(Error::custom)?;
-        expanded.parse().map_err(Error::custom)
+        Ok(T::from(expanded.into_owned()))
     }
 }
 
