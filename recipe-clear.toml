@@ -4,13 +4,16 @@ repo = "library/clearlinux"
 tag = "base"
 
 [target]
-registry = "git.jmteegen.eu"
-repo = "max/kleinladungstraeger"
+registry = "ghcr.io"
+repo = "max-te/kleinladungstraeger"
 tag = "clear"
-auth = "$GITEA_TOKEN"
+auth = ["max-te", "$GITHUB_TOKEN"]
 
 [modification]
 app_layer_folder = "target/docker"
 
 [modification.execution_config]
-Cmd = ["/klt"]
+Cmd = ["/bin/klt"]
+
+[modification.execution_config.Labels]
+"org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"

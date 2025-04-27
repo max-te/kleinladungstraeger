@@ -1,0 +1,39 @@
+name: Build and Publish
+
+on:
+  push:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
+
+jobs:
+  build_release:
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.8
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Run tests
+        run: cargo test --verbose
+      - name: Prepare app layer
+        run: |
+          mkdir -p ./target/docker/bin
+          cp ./target/release/klt ./target/docker/bin/klt
+      - name: Publish distroless image
+        run: ./target/release/klt recipe.toml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish clearlinux image
+        run: ./target/release/klt recipe-clear.toml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

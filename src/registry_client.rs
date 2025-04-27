@@ -71,14 +71,10 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
     }
 
     #[tracing::instrument(skip_all)]
-    async fn probe_for_token_endpoint(
-        registry: impl ToString,
-        repo: impl ToString,
-    ) -> Result<String> {
+    async fn probe_for_token_endpoint(registry: impl ToString) -> Result<String> {
         let registry = registry.to_string();
-        let repo = repo.to_string();
         let url = Url::parse(&format!(
-            "{scheme}://{registry}/v2/{repo}/manifests/latest",
+            "{scheme}://{registry}/v2/",
             scheme = Self::scheme()
         ))
         .into_diagnostic()?;
@@ -100,6 +96,7 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
                 Err(miette::miette!("No WWW-Authenticate header"))
             }
         } else {
+            debug!("No WWW-Authenticate header but not 401, falling back to token endpoint.",);
             Ok(format!(
                 "{scheme}://{registry}/v2/token",
                 scheme = Self::scheme()
@@ -115,7 +112,7 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
     ) -> Result<Self> {
         let registry = registry.to_string();
         let repo = repo.to_string();
-        let realm = Self::probe_for_token_endpoint(&registry, &repo).await?;
+        let realm = Self::probe_for_token_endpoint(&registry).await?;
         let token_url =
             Url::parse_with_params(&realm, [("scope", format!("repository:{repo}:{scope}"))])
                 .into_diagnostic()?;
@@ -158,11 +155,11 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
     ) -> Result<Self> {
         let registry = registry.to_string();
         let repo = repo.to_string();
-        let realm = Self::probe_for_token_endpoint(&registry, &repo).await?;
+
+        let realm = Self::probe_for_token_endpoint(&registry).await?;
         let token_url =
             Url::parse_with_params(&realm, [("scope", format!("repository:{repo}:{scope}"))])
                 .into_diagnostic()?;
-
         let token_resp = Client::default()
             .get(token_url)
             .basic_auth(username, Some(password))
@@ -432,7 +429,7 @@ mod tests {
 
         // Mock the probe endpoint
         Mock::given(method("GET"))
-            .and(path("/v2/test-repo/manifests/latest"))
+            .and(path("/v2/"))
             .respond_with(ResponseTemplate::new(401).insert_header(
                 "WWW-Authenticate",
                 format!(
