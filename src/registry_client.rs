@@ -13,19 +13,19 @@ pub struct RegistryClient<const INSECURE: bool = false> {
     pub repo: String,
 }
 
-// pub enum ClientScope {
-//     Push,
-//     Pull,
-// }
+pub enum ClientScope {
+    Push,
+    Pull,
+}
 
-// impl Display for ClientScope {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             ClientScope::Push => write!(f, "push"),
-//             ClientScope::Pull => write!(f, "pull"),
-//         }
-//     }
-// }
+impl Display for ClientScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientScope::Push => write!(f, "push"),
+            ClientScope::Pull => write!(f, "pull"),
+        }
+    }
+}
 
 impl RegistryClient {
     #[tracing::instrument(skip_all)]
@@ -33,17 +33,30 @@ impl RegistryClient {
         registry: impl ToString,
         repo: impl ToString,
         auth: &Authorization,
+        scope: ClientScope,
     ) -> Result<Self> {
         match auth {
             Authorization::UserPassword(user, pass) => {
-                RegistryClient::<false>::with_basic_auth(registry, repo, user, pass.expose_secret())
-                    .await
+                RegistryClient::<false>::with_basic_auth(
+                    registry,
+                    repo,
+                    user,
+                    pass.expose_secret(),
+                    scope,
+                )
+                .await
             }
             Authorization::Token(token) => {
-                RegistryClient::<false>::with_basic_auth(registry, repo, "", token.expose_secret())
-                    .await
+                RegistryClient::<false>::with_basic_auth(
+                    registry,
+                    repo,
+                    "",
+                    token.expose_secret(),
+                    scope,
+                )
+                .await
             }
-            Authorization::None => RegistryClient::<false>::anonymous(registry, repo).await,
+            Authorization::None => RegistryClient::<false>::anonymous(registry, repo, scope).await,
         }
     }
 }
@@ -95,12 +108,16 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn anonymous(registry: impl ToString, repo: impl ToString) -> Result<Self> {
+    pub async fn anonymous(
+        registry: impl ToString,
+        repo: impl ToString,
+        scope: ClientScope,
+    ) -> Result<Self> {
         let registry = registry.to_string();
         let repo = repo.to_string();
         let realm = Self::probe_for_token_endpoint(&registry, &repo).await?;
         let token_url =
-            Url::parse_with_params(&realm, [("scope", format!("repository:{repo}:pull"))])
+            Url::parse_with_params(&realm, [("scope", format!("repository:{repo}:{scope}"))])
                 .into_diagnostic()?;
 
         let token_resp = Client::default()
@@ -137,15 +154,16 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
         repo: impl ToString,
         username: impl Display,
         password: impl Display,
+        scope: ClientScope,
     ) -> Result<Self> {
         debug!("Creating registry client with basic auth with {username}:{password}");
         let registry = registry.to_string();
         let repo = repo.to_string();
-        let token_url = Url::parse_with_params(
-            &format!("{scheme}://{registry}/v2/token", scheme = Self::scheme()),
-            [("scope", format!("repository:{repo}:push"))],
-        )
-        .into_diagnostic()?;
+        let realm = Self::probe_for_token_endpoint(&registry, &repo).await?;
+        let token_url =
+            Url::parse_with_params(&realm, [("scope", format!("repository:{repo}:{scope}"))])
+                .into_diagnostic()?;
+
         let token_resp = Client::default()
             .get(token_url)
             .basic_auth(username, Some(password))
@@ -431,7 +449,9 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = RegistryClient::<true>::anonymous(&registry_url, "test-repo").await?;
+        let client =
+            RegistryClient::<true>::anonymous(&registry_url, "test-repo", ClientScope::Pull)
+                .await?;
 
         assert_eq!(client.registry, registry_url);
         assert_eq!(client.repo, "test-repo");
@@ -456,6 +476,7 @@ mod tests {
             "test-repo",
             "username",
             "password",
+            ClientScope::Push,
         )
         .await?;
 

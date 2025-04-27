@@ -2,6 +2,7 @@ use futures::TryFutureExt;
 use miette::{Context, IntoDiagnostic, Result};
 use oci_spec::image::{Arch, Os};
 use recipe::Recipe;
+use registry_client::ClientScope;
 use tracing::{debug, info};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -33,10 +34,14 @@ async fn main() -> Result<()> {
     let recipe: Recipe = crate::recipe::load_recipe(recipe_file)?;
     debug!("{:?}", &recipe);
 
-    let base_provider =
-        RegistryClient::new(&recipe.base.registry, &recipe.base.repo, &recipe.base.auth)
-            .await
-            .context("creating base image registry client")?;
+    let base_provider = RegistryClient::new(
+        &recipe.base.registry,
+        &recipe.base.repo,
+        &recipe.base.auth,
+        ClientScope::Pull,
+    )
+    .await
+    .context("creating base image registry client")?;
     let base = base_provider
         .get_tag_for_target(&recipe.base.tag, Arch::Amd64, Os::Linux)
         .map_err(|e| e.context("getting base image"));
@@ -47,6 +52,7 @@ async fn main() -> Result<()> {
         &recipe.target.registry,
         &recipe.target.repo,
         &recipe.target.auth,
+        ClientScope::Push,
     )
     .map_err(|e| e.context("creating target registry client"));
 
