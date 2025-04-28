@@ -16,6 +16,7 @@ jobs:
       packages: write
       contents: read
       id-token: write
+      attestations: write
     runs-on: ubuntu-latest
     steps:
       - name: Run sccache-cache
