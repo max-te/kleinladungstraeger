@@ -3,7 +3,7 @@ use oci_spec::image::{Digest, ImageConfiguration, ImageIndex, ImageManifest, Med
 use reqwest::{Client, Url};
 use secrecy::ExposeSecret;
 use std::{borrow::Borrow, fmt::Display};
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use crate::recipe::Authorization;
 
@@ -156,7 +156,6 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
         password: impl Display,
         scope: ClientScope,
     ) -> Result<Self> {
-        debug!("Creating registry client with basic auth with {username}:{password}");
         let registry = registry.to_string();
         let repo = repo.to_string();
         let realm = Self::probe_for_token_endpoint(&registry, &repo).await?;
