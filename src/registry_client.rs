@@ -3,7 +3,7 @@ use oci_spec::image::{Digest, ImageConfiguration, ImageIndex, ImageManifest, Med
 use reqwest::{Client, Url};
 use secrecy::ExposeSecret;
 use std::{borrow::Borrow, fmt::Display};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use crate::recipe::Authorization;
 
@@ -395,6 +395,10 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
                 self.repo_url()?
                     .join(&format!("manifests/{tag}"))
                     .into_diagnostic()?,
+            )
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                manifest.media_type().as_ref().unwrap().to_string(),
             )
             .body(manifest.to_string().into_diagnostic()?)
             .send()
