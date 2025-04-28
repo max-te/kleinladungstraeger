@@ -30,10 +30,29 @@ jobs:
           mkdir -p ./target/docker/bin
           cp ./target/release/klt ./target/docker/bin/klt
       - name: Publish distroless image
-        run: ./target/release/klt recipe.toml
+        id: push-distroless
+        run: |
+          ./target/release/klt --digest-file ./distroless.digest recipe.toml
+          echo "digest=$(cat ./distroless.digest)" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish clearlinux image
-        run: ./target/release/klt recipe-clear.toml
+        id: push-clear
+        run: |
+          ./target/release/klt --digest-file ./clear.digest recipe-clear.toml
+          echo "digest=$(cat ./clear.digest)" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate artifact attestation (distroless)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/max-te/kleinladungstraeger
+          subject-digest: ${{ steps.push-distroless.outputs.digest }}
+          push-to-registry: true
+      - name: Generate artifact attestation (clearlinux)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/max-te/kleinladungstraeger
+          subject-digest: ${{ steps.push-clear.outputs.digest }}
+          push-to-registry: true
