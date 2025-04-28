@@ -72,8 +72,7 @@ async fn main() -> Result<()> {
 
     debug!("{:?}", &image.manifest);
 
-    let digest = image.manifest.config().digest().clone();
-    image
+    let digest = image
         .push_to(&target_client, recipe.target.tags())
         .await
         .with_context(|| "pushing image")?;

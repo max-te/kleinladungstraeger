@@ -146,7 +146,7 @@ impl PreparationState {
         mut self,
         target: &RegistryClient,
         tags: Vec<String>,
-    ) -> Result<()> {
+    ) -> Result<Digest> {
         info!(
             "pushing image to {}/{}:{tags:?}",
             target.registry, target.repo
@@ -183,7 +183,7 @@ impl PreparationState {
             tasks.push(Box::pin(target.upload_manifest(self.manifest.clone(), tag)));
         }
         tasks.try_collect::<Vec<()>>().await?;
-        Ok(())
+        Ok(self.manifest.config().digest().clone())
     }
 }
 
