@@ -2,7 +2,7 @@ use miette::{IntoDiagnostic, Result};
 use oci_spec::image::{Digest, ImageConfiguration, ImageIndex, ImageManifest, MediaType};
 use reqwest::{Client, Url};
 use secrecy::ExposeSecret;
-use std::{borrow::Borrow, fmt::Display};
+use std::{borrow::Borrow, fmt::Display, str::FromStr};
 use tracing::{debug, info};
 
 use crate::recipe::Authorization;
@@ -381,12 +381,17 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn upload_manifest(&self, manifest: ImageManifest, tag: impl Display) -> Result<()> {
+    pub async fn upload_manifest(
+        &self,
+        manifest: ImageManifest,
+        tag: impl Display,
+    ) -> Result<Digest> {
         info!(
             "uploading manifest for {}/{}:{}",
             &self.registry, &self.repo, &tag
         );
-        self.client
+        let res = self
+            .client
             .put(
                 self.repo_url()?
                     .join(&format!("manifests/{tag}"))
@@ -402,7 +407,13 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
             .into_diagnostic()?
             .error_for_status()
             .into_diagnostic()?;
-        Ok(())
+        res.headers()
+            .get("docker-content-digest")
+            .ok_or(miette::miette!(
+                "Missing docker-content-digest header in registry response"
+            ))
+            .and_then(|h| h.to_str().into_diagnostic())
+            .and_then(|s| Digest::from_str(s).into_diagnostic())
     }
 }
 

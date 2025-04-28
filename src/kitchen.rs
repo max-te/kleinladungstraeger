@@ -177,13 +177,13 @@ impl PreparationState {
 
         tasks.try_collect::<Vec<()>>().await?;
 
-        let tasks: FuturesUnordered<Pin<Box<dyn Future<Output = Result<()>> + Send>>> =
+        let tasks: FuturesUnordered<Pin<Box<dyn Future<Output = Result<Digest>> + Send>>> =
             FuturesUnordered::new();
         for tag in tags {
             tasks.push(Box::pin(target.upload_manifest(self.manifest.clone(), tag)));
         }
-        tasks.try_collect::<Vec<()>>().await?;
-        Ok(self.manifest.config().digest().clone())
+        let mut digests = tasks.try_collect::<Vec<Digest>>().await?;
+        Ok(digests.pop().unwrap())
     }
 }
 
