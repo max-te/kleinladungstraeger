@@ -1,6 +1,8 @@
+use std::fmt::Display;
 use std::path::Path;
 
 use miette::{Context, IntoDiagnostic, Result};
+use oci_spec::distribution::Reference;
 use oci_spec::image::Config as ExecConfig;
 use secrecy::SecretString;
 use serde::Deserialize;
@@ -26,11 +28,7 @@ pub struct BaseSource {
     #[serde(default)]
     pub auth: Authorization,
     #[serde_as(as = "ShellExpanded")]
-    pub registry: String,
-    #[serde_as(as = "ShellExpanded")]
-    pub repo: String,
-    #[serde_as(as = "ShellExpanded")]
-    pub tag: String,
+    pub image: Reference,
 }
 
 #[serde_as]
@@ -44,25 +42,26 @@ pub struct Target {
     pub repo: String,
     #[serde_as(as = "Vec<ShellExpanded>")]
     #[serde(default)]
-    tags: Vec<String>,
-    #[serde_as(as = "Option<ShellExpanded>")]
-    tag: Option<String>,
+    tags: Vec<TagName>,
 }
 
 impl Target {
-    pub fn tags(&self) -> Vec<String> {
-        let mut nonempty_tags: Vec<String> = self
+    pub fn tags(&self) -> Vec<TagName> {
+        self
             .tags
             .iter()
             .filter(|t| !t.is_empty())
             .cloned()
-            .collect();
-        if let Some(tag) = &self.tag {
-            nonempty_tags.push(tag.clone());
-        }
-        nonempty_tags
+            .collect()
     }
 }
+
+#[nutype::nutype(
+    derive(Display, Debug, Clone, Deserialize, TryFrom, Deref, PartialEq, Eq),
+    validate(regex = "^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$")
+)]
+pub struct TagName(String);
+
 
 #[serde_as]
 #[derive(Deserialize, Debug, Clone)]
@@ -84,7 +83,8 @@ struct ShellExpanded;
 
 impl<'de, T> DeserializeAs<'de, T> for ShellExpanded
 where
-    T: From<String> + serde::Deserialize<'de>,
+    T: TryFrom<String> + serde::Deserialize<'de>,
+    <T as TryFrom<String>>::Error: Display,
 {
     fn deserialize_as<D>(deserializer: D) -> Result<T, D::Error>
     where
@@ -92,7 +92,7 @@ where
     {
         let s = String::deserialize(deserializer).map_err(Error::custom)?;
         let expanded = shellexpand::env(&s).map_err(Error::custom)?;
-        Ok(T::from(expanded.into_owned()))
+        Ok(T::try_from(expanded.into_owned()).map_err(|e| Error::custom(e.to_string()))?)
     }
 }
 
@@ -120,12 +120,11 @@ mod tests {
             auth: Authorization::None,
             registry: "registry".to_string(),
             repo: "repo".to_string(),
-            tags: vec!["tag1".to_string(), "".to_string(), "tag2".to_string()],
-            tag: Some("tag3".to_string()),
+            tags: vec![TagName::try_from("tag1").unwrap(), TagName::try_from("tag2").unwrap()],
         };
 
         let tags = target.tags();
-        assert_eq!(tags, vec!["tag1", "tag2", "tag3"]);
+        assert_eq!(tags, vec![TagName::try_from("tag1").unwrap(), TagName::try_from("tag2").unwrap()]);
     }
 
     #[test]
@@ -134,21 +133,19 @@ mod tests {
 
         let toml_content = r#"
             [base]
-            registry = "$TEST_VAR/registry"
-            repo = "repo"
-            tag = "tag"
+            image = "$TEST_VAR/some/repo:tag"
 
             [target]
             registry = "registry"
             repo = "repo"
-            tag = "tag"
+            tags = ["tag"]
 
             [modification]
             app_layer_folder = "folder"
         "#;
 
         let recipe: Recipe = toml::from_str(toml_content).unwrap();
-        assert_eq!(recipe.base.registry, "test_value/registry");
+        assert_eq!(recipe.base.image.repository(), "test_value/some/repo");
     }
 
     #[test]
@@ -156,14 +153,12 @@ mod tests {
         let mut file = NamedTempFile::new().unwrap();
         let content = r#"
             [base]
-            registry = "registry"
-            repo = "repo"
-            tag = "tag"
+            image = "registry.io/repo:tag"
 
             [target]
             registry = "registry"
             repo = "repo"
-            tag = "tag"
+            tags = ["tag"]
 
             [modification]
             app_layer_folder = "folder"
@@ -174,7 +169,7 @@ mod tests {
         file.write_all(content.as_bytes()).unwrap();
 
         let recipe = load_recipe(file.path())?;
-        assert_eq!(recipe.base.registry, "registry");
+        assert_eq!(recipe.base.image.registry(), "registry.io");
         assert_eq!(recipe.target.repo, "repo");
         assert_eq!(recipe.modification.app_layer_folder, "folder");
         assert_eq!(

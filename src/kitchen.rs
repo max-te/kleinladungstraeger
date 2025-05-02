@@ -11,6 +11,7 @@ use oci_spec::image::{Descriptor, ImageConfiguration};
 use tracing::info;
 
 use crate::app_layer::{self, AppLayer};
+use crate::recipe::TagName;
 use crate::registry_client::RegistryClient;
 
 pub(crate) async fn ensure_base_layer(
@@ -145,7 +146,7 @@ impl PreparationState {
     pub(crate) async fn push_to(
         mut self,
         target: &RegistryClient,
-        tags: Vec<String>,
+        tags: Vec<TagName>,
     ) -> Result<Digest> {
         info!(
             "pushing image to {}/{}:{tags:?}",

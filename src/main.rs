@@ -37,15 +37,16 @@ async fn main() -> Result<()> {
     debug!("{:?}", &recipe);
 
     let base_provider = RegistryClient::new(
-        &recipe.base.registry,
-        &recipe.base.repo,
+        &recipe.base.image.resolve_registry(),
+        &recipe.base.image.repository(),
         &recipe.base.auth,
         ClientScope::Pull,
     )
     .await
     .context("creating base image registry client")?;
+    let base_tag = recipe.base.image.digest().or(recipe.base.image.tag()).unwrap_or("latest");
     let base = base_provider
-        .get_tag_for_target(&recipe.base.tag, Arch::Amd64, Os::Linux)
+        .get_tag_for_target(base_tag, Arch::Amd64, Os::Linux)
         .map_err(|e| e.context("getting base image"));
     let app_layer = AppLayer::build_from_directory(&recipe.modification.app_layer_folder)
         .map_err(|e| e.context("building app layer"));

@@ -1,12 +1,10 @@
 [base]
-registry = "registry-1.docker.io"
-repo = "library/clearlinux"
-tag = "base"
+image = "registry-1.docker.io/library/clearlinux:base"
 
 [target]
 registry = "ghcr.io"
 repo = "max-te/kleinladungstraeger"
-tag = "clear"
+tags = ["clear"]
 auth = ["max-te", "$GITHUB_TOKEN"]
 
 [modification]

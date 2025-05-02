@@ -1,7 +1,5 @@
 [base]
-registry = "gcr.io"
-repo = "distroless/cc-debian12"
-tag = "latest"
+image = "gcr.io/distroless/cc-debian12:latest"
 
 [target]
 registry = "ghcr.io"
