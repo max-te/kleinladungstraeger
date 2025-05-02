@@ -175,7 +175,6 @@ impl PreparationState {
         ));
 
         self.manifest.set_config(conf_desc);
-
         tasks.try_collect::<Vec<()>>().await?;
 
         let tasks: FuturesUnordered<Pin<Box<dyn Future<Output = Result<Digest>> + Send>>> =
@@ -185,6 +184,11 @@ impl PreparationState {
         }
         let mut digests = tasks.try_collect::<Vec<Digest>>().await?;
         Ok(digests.pop().unwrap())
+    }
+
+    pub fn set_annotations(&mut self, annotations: HashMap<String, String>) {
+        info!("setting manifest annotations to {annotations:?}");
+        self.manifest.set_annotations(Some(annotations));
     }
 }
 

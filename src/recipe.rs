@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::Path;
 
@@ -7,7 +8,7 @@ use oci_spec::image::Config as ExecConfig;
 use secrecy::SecretString;
 use serde::Deserialize;
 use serde::{de::Error, Deserializer};
-use serde_with::{serde_as, DeserializeAs};
+use serde_with::{serde_as, DeserializeAs, MapPreventDuplicates};
 
 #[serde_as]
 #[derive(Deserialize, Debug, Clone, Default)]
@@ -69,6 +70,9 @@ pub struct ImageModification {
     pub execution_config: Option<ExecConfig>,
     #[serde_as(as = "ShellExpanded")]
     pub app_layer_folder: String,
+    #[serde_as(as = "MapPreventDuplicates<_, ShellExpanded>")]
+    #[serde(default)]
+    pub annotations: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -142,6 +146,7 @@ mod tests {
 
             [modification]
             app_layer_folder = "folder"
+            annotations = { "annotation1" = "value1" }
         "#;
 
         let recipe: Recipe = toml::from_str(toml_content).unwrap();

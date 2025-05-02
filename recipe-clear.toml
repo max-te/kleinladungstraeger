@@ -15,3 +15,6 @@ Cmd = ["/bin/klt"]
 
 [modification.execution_config.Labels]
 "org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"
+
+[modification.annotations]
+"org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"

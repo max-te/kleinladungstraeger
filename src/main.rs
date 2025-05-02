@@ -71,6 +71,8 @@ async fn main() -> Result<()> {
         .execution_config
         .inspect(|patch| image.patch_execution_config(patch));
 
+    image.set_annotations(recipe.modification.annotations);
+
     debug!("{:?}", &image.manifest);
 
     let digest = image
