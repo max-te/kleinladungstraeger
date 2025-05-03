@@ -28,8 +28,8 @@ jobs:
         run: cargo test --verbose
       - name: Prepare app layer
         run: |
-          mkdir -p ./target/docker/bin
-          cp ./target/release/klt ./target/docker/bin/klt
+          mkdir -p ./target/docker/usr/bin
+          cp ./target/release/klt ./target/docker/usr/bin/klt
       - name: Publish distroless image
         id: push-distroless
         run: |
@@ -44,6 +44,10 @@ jobs:
           echo "digest=$(cat ./clear.digest)" >> $GITHUB_OUTPUT
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Print digests
+        run: |
+          echo "distroless digest: ${{ steps.push-distroless.outputs.digest }}"
+          echo "clear digest: ${{ steps.push-clear.outputs.digest }}"
 
       # - name: Docker Login for attestation
       #   run: docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}

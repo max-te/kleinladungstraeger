@@ -11,7 +11,7 @@ auth = ["max-te", "$GITHUB_TOKEN"]
 app_layer_folder = "target/docker"
 
 [modification.execution_config]
-Cmd = ["/bin/klt"]
+Cmd = ["klt"]
 
 [modification.execution_config.Labels]
 "org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"
