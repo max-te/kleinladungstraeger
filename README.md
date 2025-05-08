@@ -1,27 +1,32 @@
 # Kleinladungsträger
 
-Kleinladungsträger (klt) builds a docker image based on a recipe.
+Kleinladungsträger (klt) builds an OCI/docker image based on a recipe.
 The recipe describes a base image and modifications to apply.
 
-The recipe is a toml file with the following structure:
+The recipe is a toml file like this:
 
 ```toml
 [base]
-registry = "gcr.io"
-repo = "distroless/cc-debian12"
-tag = "latest"
+image = "gcr.io/distroless/cc-debian12:latest"
 
 [target]
-registry = "git.jmteegen.eu"
-repo = "max/kleinladungstraeger"
-tag = "latest"
-auth = "$GITEA_TOKEN"
+registry = "ghcr.io"
+repo = "max-te/kleinladungstraeger"
+tags = ["latest", "distroless"]
+auth = ["max-te", "$GITHUB_TOKEN"]
 
 [modification]
-app_layer_folder = "target/docker"
+app_layer_folder = "target/docker/usr/bin"
 
 [modification.execution_config]
 Cmd = ["/klt"]
+
+[modification.execution_config.Labels]
+"org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"
+
+[modification.annotations]
+"org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"
+
 ```
 
 The `base` section describes the base image.
@@ -44,3 +49,5 @@ supported keys are:
 - `Labels`
 
 Values must be in the format specified by the [OCI Image Specification](https://github.com/opencontainers/image-spec/blob/c05acf7eb327dae4704a4efe01253a0e60af6b34/config.md?plain=1#L131-L209).
+
+The `annotations` section allows defining annotations for the image manifest.
