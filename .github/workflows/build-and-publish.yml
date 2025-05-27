@@ -16,7 +16,7 @@ jobs:
       packages: write
       contents: read
       id-token: write
-      # attestations: write
+      attestations: write
     runs-on: ubuntu-latest
     steps:
       - name: Run sccache-cache
@@ -49,17 +49,17 @@ jobs:
           echo "distroless digest: ${{ steps.push-distroless.outputs.digest }}"
           echo "clear digest: ${{ steps.push-clear.outputs.digest }}"
 
-      # - name: Docker Login for attestation
-      #   run: docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-      # - name: Generate artifact attestation (distroless)
-      #   uses: actions/attest-build-provenance@v2
-      #   with:
-      #     subject-name: ghcr.io/max-te/kleinladungstraeger
-      #     subject-digest: ${{ steps.push-distroless.outputs.digest }}
-      #     push-to-registry: true
-      # - name: Generate artifact attestation (clearlinux)
-      #   uses: actions/attest-build-provenance@v2
-      #   with:
-      #     subject-name: ghcr.io/max-te/kleinladungstraeger
-      #     subject-digest: ${{ steps.push-clear.outputs.digest }}
-      #     push-to-registry: true
+      - name: Docker Login for attestation
+        run: docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate artifact attestation (distroless)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/max-te/kleinladungstraeger
+          subject-digest: "${{ steps.push-distroless.outputs.digest }}"
+          push-to-registry: true
+      - name: Generate artifact attestation (clearlinux)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/max-te/kleinladungstraeger
+          subject-digest: "${{ steps.push-clear.outputs.digest }}"
+          push-to-registry: true
