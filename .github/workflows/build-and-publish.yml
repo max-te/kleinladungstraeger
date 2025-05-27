@@ -56,10 +56,10 @@ jobs:
         with:
           subject-name: ghcr.io/max-te/kleinladungstraeger
           subject-digest: "${{ steps.push-distroless.outputs.digest }}"
-          push-to-registry: true
+          # push-to-registry: true
       - name: Generate artifact attestation (clearlinux)
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ghcr.io/max-te/kleinladungstraeger
           subject-digest: "${{ steps.push-clear.outputs.digest }}"
-          push-to-registry: true
+          # push-to-registry: true
