@@ -2,15 +2,26 @@ use miette::{IntoDiagnostic, Result};
 use oci_spec::image::{Digest, ImageConfiguration, ImageIndex, ImageManifest, MediaType};
 use reqwest::{Client, Url};
 use secrecy::ExposeSecret;
-use std::{borrow::Borrow, fmt::Display, str::FromStr};
+use std::{borrow::Borrow, fmt::Display, marker::PhantomData, str::FromStr};
 use tracing::{debug, info};
 
 use crate::recipe::Authorization;
 
-pub struct RegistryClient<const INSECURE: bool = false> {
+pub trait Scheme {
+    const STR: &'static str;
+}
+
+pub struct HttpsScheme;
+
+impl Scheme for HttpsScheme {
+    const STR: &'static str = "https";
+}
+
+pub struct RegistryClient<SCHEME: Scheme = HttpsScheme> {
     client: reqwest::Client,
     pub registry: String,
     pub repo: String,
+    scheme: PhantomData<SCHEME>,
 }
 
 pub enum ClientScope {
@@ -27,7 +38,7 @@ impl Display for ClientScope {
     }
 }
 
-impl RegistryClient {
+impl<SCHEME: Scheme> RegistryClient<SCHEME> {
     #[tracing::instrument(skip_all)]
     pub async fn new(
         registry: impl ToString,
@@ -37,47 +48,20 @@ impl RegistryClient {
     ) -> Result<Self> {
         match auth {
             Authorization::UserPassword(user, pass) => {
-                RegistryClient::<false>::with_basic_auth(
-                    registry,
-                    repo,
-                    user,
-                    pass.expose_secret(),
-                    scope,
-                )
-                .await
+                Self::with_basic_auth(registry, repo, user, pass.expose_secret(), scope).await
             }
             Authorization::Token(token) => {
-                RegistryClient::<false>::with_basic_auth(
-                    registry,
-                    repo,
-                    "",
-                    token.expose_secret(),
-                    scope,
-                )
-                .await
+                Self::with_basic_auth(registry, repo, "", token.expose_secret(), scope).await
             }
-            Authorization::None => RegistryClient::<false>::anonymous(registry, repo, scope).await,
-        }
-    }
-}
-
-impl<const INSECURE: bool> RegistryClient<INSECURE> {
-    fn scheme() -> &'static str {
-        if INSECURE {
-            "http"
-        } else {
-            "https"
+            Authorization::None => Self::anonymous(registry, repo, scope).await,
         }
     }
 
     #[tracing::instrument(skip_all)]
     async fn probe_for_token_endpoint(registry: impl ToString) -> Result<String> {
         let registry = registry.to_string();
-        let url = Url::parse(&format!(
-            "{scheme}://{registry}/v2/",
-            scheme = Self::scheme()
-        ))
-        .into_diagnostic()?;
+        let url = Url::parse(&format!("{scheme}://{registry}/v2/", scheme = SCHEME::STR))
+            .into_diagnostic()?;
 
         let resp = reqwest::get(url).await.into_diagnostic()?;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
@@ -99,13 +83,13 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
             debug!("No WWW-Authenticate header but not 401, falling back to token endpoint.",);
             Ok(format!(
                 "{scheme}://{registry}/v2/token",
-                scheme = Self::scheme()
+                scheme = SCHEME::STR
             ))
         }
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn anonymous(
+    async fn anonymous(
         registry: impl ToString,
         repo: impl ToString,
         scope: ClientScope,
@@ -142,11 +126,12 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
             client,
             registry,
             repo,
+            scheme: PhantomData,
         })
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn with_basic_auth(
+    async fn with_basic_auth(
         registry: impl ToString,
         repo: impl ToString,
         username: impl Display,
@@ -185,13 +170,14 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
             client,
             registry,
             repo,
+            scheme: PhantomData,
         })
     }
 
     fn repo_url(&self) -> Result<Url> {
         Url::parse(&format!(
             "{}://{}/v2/{}/",
-            Self::scheme(),
+            SCHEME::STR,
             self.registry,
             self.repo
         ))
@@ -421,12 +407,19 @@ impl<const INSECURE: bool> RegistryClient<INSECURE> {
 mod tests {
     use super::*;
     use oci_spec::image::{Arch, Os};
+    use secrecy::SecretString;
     use std::str::FromStr;
     use test_log::test;
     use wiremock::{
         matchers::{method, path},
         Mock, MockServer, ResponseTemplate,
     };
+
+    struct HttpScheme;
+
+    impl Scheme for HttpScheme {
+        const STR: &'static str = "http";
+    }
 
     const TEST_DIGEST: &str =
         "sha256:9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a";
@@ -460,9 +453,13 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client =
-            RegistryClient::<true>::anonymous(&registry_url, "test-repo", ClientScope::Pull)
-                .await?;
+        let client = RegistryClient::<HttpScheme>::new(
+            &registry_url,
+            "test-repo",
+            &Authorization::None,
+            ClientScope::Pull,
+        )
+        .await?;
 
         assert_eq!(client.registry, registry_url);
         assert_eq!(client.repo, "test-repo");
@@ -482,11 +479,10 @@ mod tests {
             })))
             .mount(&mock_server)
             .await;
-        let client = RegistryClient::<true>::with_basic_auth(
+        let client = RegistryClient::<HttpScheme>::new(
             &registry_url,
             "test-repo",
-            "username",
-            "password",
+            &Authorization::UserPassword("username".to_string(), SecretString::from("password")),
             ClientScope::Push,
         )
         .await?;
@@ -561,10 +557,11 @@ mod tests {
             .await;
 
         // Create client and test
-        let client = RegistryClient::<true> {
+        let client = RegistryClient::<HttpScheme> {
             client: reqwest::Client::new(),
             registry: registry_url,
             repo: "test-repo".to_string(),
+            scheme: PhantomData,
         };
 
         let (manifest, config) = client
@@ -606,10 +603,11 @@ mod tests {
             .mount(&mock_server)
             .await;
 
-        let client = RegistryClient::<true> {
+        let client = RegistryClient::<HttpScheme> {
             client: reqwest::Client::new(),
             registry: registry_url,
             repo: "test-repo".to_string(),
+            scheme: PhantomData,
         };
 
         // Test upload
