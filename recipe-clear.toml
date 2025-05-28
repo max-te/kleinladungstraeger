@@ -3,9 +3,9 @@ image = "registry-1.docker.io/library/clearlinux:base"
 
 [target]
 registry = "ghcr.io"
-repo = "max-te/kleinladungstraeger"
-tags = ["clear"]
-auth = ["max-te", "$GITHUB_TOKEN"]
+repo = "$GITHUB_REPOSITORY"
+tags = ["clear", "$RELEASE_TAG-clear"]
+auth = ["$GITHUB_ACTOR", "$GITHUB_TOKEN"]
 
 [modification]
 app_layer_folder = "target/docker"
@@ -14,7 +14,7 @@ app_layer_folder = "target/docker"
 Cmd = ["klt"]
 
 [modification.execution_config.Labels]
-"org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"
+"org.opencontainers.image.source" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
 
 [modification.annotations]
-"org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"
+"org.opencontainers.image.source" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"

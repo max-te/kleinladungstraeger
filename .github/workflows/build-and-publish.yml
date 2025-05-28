@@ -3,6 +3,7 @@ name: Build and Publish
 on:
   push:
     branches: ["main"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,7 +15,7 @@ jobs:
   build_release:
     permissions:
       packages: write
-      contents: read
+      contents: write
       id-token: write
       attestations: write
     runs-on: ubuntu-latest
@@ -22,32 +23,40 @@ jobs:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.9
       - uses: actions/checkout@v4
+
+      - name: Parse release tag and set version
+        if: github.ref_type == 'tag'
+        run: |
+          TAG_NAME=$(echo "$GITHUB_REF" | sed 's|refs/tags/v||')
+          echo "RELEASE_TAG=$TAG_NAME" >> $GITHUB_ENV
+          sed -i "/\[package\]/,/\[/{s/version = \"[^\"]*\"/version = \"$TAG_NAME\"/}" Cargo.toml
+
       - name: Build
         run: cargo build --release --verbose
       - name: Run tests
         run: cargo test --verbose
-      - name: Prepare app layer
+      - name: Build and publish images
+        id: images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          echo "::group::Prepare file structure"
           mkdir -p ./target/docker/usr/bin
           cp ./target/release/klt ./target/docker/usr/bin/klt
-      - name: Publish distroless image
-        id: push-distroless
-        run: |
+          echo "::endgroup::"
+
+          echo "::group::Build distroless image"
           ./target/release/klt --digest-file ./distroless.digest recipe.toml
-          echo "digest=$(cat ./distroless.digest)" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish clearlinux image
-        id: push-clear
-        run: |
+          echo "distroless=$(cat ./distroless.digest)" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+          echo "::group::Build clearlinux image"
           ./target/release/klt --digest-file ./clear.digest recipe-clear.toml
-          echo "digest=$(cat ./clear.digest)" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Print digests
-        run: |
-          echo "distroless digest: ${{ steps.push-distroless.outputs.digest }}"
-          echo "clear digest: ${{ steps.push-clear.outputs.digest }}"
+          echo "clear=$(cat ./clear.digest)" >> $GITHUB_OUTPUT
+          echo "::endgroup::"
+
+          echo "distroless digest: $(cat ./distroless.digest)" >> $GITHUB_STEP_SUMMARY
+          echo "clear digest: $(cat ./clear.digest)" >> $GITHUB_STEP_SUMMARY
 
       - name: Docker Login for attestation
         run: docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
@@ -55,11 +64,23 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ghcr.io/max-te/kleinladungstraeger
-          subject-digest: "${{ steps.push-distroless.outputs.digest }}"
+          subject-digest: "${{ steps.images.outputs.distroless }}"
           # push-to-registry: true
       - name: Generate artifact attestation (clearlinux)
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ghcr.io/max-te/kleinladungstraeger
-          subject-digest: "${{ steps.push-clear.outputs.digest }}"
+          subject-digest: "${{ steps.images.outputs.clear }}"
           # push-to-registry: true
+
+      - name: Commit and push updated Cargo.toml
+        if: github.ref_type == 'tag'
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git checkout -b main
+          git fetch origin main
+          git branch -u origin/main
+          git add Cargo.toml Cargo.lock
+          git commit -m "chore: bump version to $RELEASE_TAG [skip ci]" --author="$GITHUB_ACTOR <$GITHUB_ACTOR@users.noreply.github.com>"
+          git push origin main

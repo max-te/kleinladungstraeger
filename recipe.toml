@@ -3,9 +3,9 @@ image = "gcr.io/distroless/cc-debian12:latest"
 
 [target]
 registry = "ghcr.io"
-repo = "max-te/kleinladungstraeger"
-tags = ["latest", "distroless"]
-auth = ["max-te", "$GITHUB_TOKEN"]
+repo = "$GITHUB_REPOSITORY"
+tags = ["latest", "distroless", "$RELEASE_TAG"]
+auth = ["$GITHUB_ACTOR", "$GITHUB_TOKEN"]
 
 [modification]
 app_layer_folder = "target/docker/usr/bin"
@@ -14,7 +14,7 @@ app_layer_folder = "target/docker/usr/bin"
 Cmd = ["/klt"]
 
 [modification.execution_config.Labels]
-"org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"
+"org.opencontainers.image.source" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
 
 [modification.annotations]
-"org.opencontainers.image.source" = "https://github.com/max-te/kleinladungstraeger"
+"org.opencontainers.image.source" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"

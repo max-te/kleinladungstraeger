@@ -8,7 +8,7 @@ use oci_spec::image::Config as ExecConfig;
 use secrecy::SecretString;
 use serde::Deserialize;
 use serde::{de::Error, Deserializer};
-use serde_with::{serde_as, DeserializeAs, MapPreventDuplicates};
+use serde_with::{serde_as, DeserializeAs, MapPreventDuplicates, VecSkipError};
 
 #[serde_as]
 #[derive(Deserialize, Debug, Clone, Default)]
@@ -41,19 +41,14 @@ pub struct Target {
     pub registry: String,
     #[serde_as(as = "ShellExpanded")]
     pub repo: String,
-    #[serde_as(as = "Vec<ShellExpanded>")]
+    #[serde_as(as = "VecSkipError<ShellExpanded>")]
     #[serde(default)]
     tags: Vec<TagName>,
 }
 
 impl Target {
     pub fn tags(&self) -> Vec<TagName> {
-        self
-            .tags
-            .iter()
-            .filter(|t| !t.is_empty())
-            .cloned()
-            .collect()
+        self.tags.iter().cloned().collect()
     }
 }
 
@@ -62,7 +57,6 @@ impl Target {
     validate(regex = "^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$")
 )]
 pub struct TagName(String);
-
 
 #[serde_as]
 #[derive(Deserialize, Debug, Clone)]
@@ -120,15 +114,23 @@ mod tests {
 
     #[test]
     fn test_target_tags() {
-        let target = Target {
-            auth: Authorization::None,
-            registry: "registry".to_string(),
-            repo: "repo".to_string(),
-            tags: vec![TagName::try_from("tag1").unwrap(), TagName::try_from("tag2").unwrap()],
-        };
+        env::set_var("TEST_VAR", "test_value");
+        env::set_var("EMPTY_VAR", "");
 
+        let toml_content = r#"
+            registry = "registry"
+            repo = "repo"
+            tags = ["tag", "$TEST_VAR", "$EMPTY_VAR", "$UNKNOWN_VAR"]
+        "#;
+        let target: Target = toml::from_str(toml_content).unwrap();
         let tags = target.tags();
-        assert_eq!(tags, vec![TagName::try_from("tag1").unwrap(), TagName::try_from("tag2").unwrap()]);
+        assert_eq!(
+            tags,
+            vec![
+                TagName::try_from("tag").unwrap(),
+                TagName::try_from("test_value").unwrap()
+            ]
+        );
     }
 
     #[test]
