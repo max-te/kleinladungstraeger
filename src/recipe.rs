@@ -7,8 +7,8 @@ use oci_spec::distribution::Reference;
 use oci_spec::image::Config as ExecConfig;
 use secrecy::SecretString;
 use serde::Deserialize;
-use serde::{de::Error, Deserializer};
-use serde_with::{serde_as, DeserializeAs, MapPreventDuplicates, VecSkipError};
+use serde::{Deserializer, de::Error};
+use serde_with::{DeserializeAs, MapPreventDuplicates, VecSkipError, serde_as};
 
 #[serde_as]
 #[derive(Deserialize, Debug, Clone, Default)]
@@ -108,51 +108,56 @@ pub fn load_recipe(file: impl AsRef<Path>) -> Result<Recipe> {
 mod tests {
     use super::*;
     use secrecy::ExposeSecret;
-    use std::env;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
     #[test]
     fn test_target_tags() {
-        env::set_var("TEST_VAR", "test_value");
-        env::set_var("EMPTY_VAR", "");
-
-        let toml_content = r#"
-            registry = "registry"
-            repo = "repo"
-            tags = ["tag", "$TEST_VAR", "$EMPTY_VAR", "$UNKNOWN_VAR"]
-        "#;
-        let target: Target = toml::from_str(toml_content).unwrap();
-        let tags = target.tags();
-        assert_eq!(
-            tags,
-            vec![
-                TagName::try_from("tag").unwrap(),
-                TagName::try_from("test_value").unwrap()
-            ]
-        );
+        temp_env::with_vars(
+            [
+                ("TEST_VAR", Some("test_value")),
+                ("EMPTY_VAR", Some("")),
+                ("UNKNOWN_VAR", None),
+            ],
+            || {
+                let toml_content = r#"
+                    registry = "registry"
+                    repo = "repo"
+                    tags = ["tag", "$TEST_VAR", "$EMPTY_VAR", "$UNKNOWN_VAR"]
+                "#;
+                let target: Target = toml::from_str(toml_content).unwrap();
+                let tags = target.tags();
+                assert_eq!(
+                    tags,
+                    vec![
+                        TagName::try_from("tag").unwrap(),
+                        TagName::try_from("test_value").unwrap()
+                    ]
+                );
+            },
+        )
     }
 
     #[test]
     fn test_shell_expanded_deserialize() {
-        env::set_var("TEST_VAR", "test_value");
+        temp_env::with_var("TEST_VAR", Some("test_value"), || {
+            let toml_content = r#"
+                [base]
+                image = "$TEST_VAR/some/repo:tag"
 
-        let toml_content = r#"
-            [base]
-            image = "$TEST_VAR/some/repo:tag"
+                [target]
+                registry = "registry"
+                repo = "repo"
+                tags = ["tag"]
 
-            [target]
-            registry = "registry"
-            repo = "repo"
-            tags = ["tag"]
+                [modification]
+                app_layer_folder = "folder"
+                annotations = { "annotation1" = "value1" }
+            "#;
 
-            [modification]
-            app_layer_folder = "folder"
-            annotations = { "annotation1" = "value1" }
-        "#;
-
-        let recipe: Recipe = toml::from_str(toml_content).unwrap();
-        assert_eq!(recipe.base.image.repository(), "test_value/some/repo");
+            let recipe: Recipe = toml::from_str(toml_content).unwrap();
+            assert_eq!(recipe.base.image.repository(), "test_value/some/repo");
+        })
     }
 
     #[test]
