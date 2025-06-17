@@ -51,3 +51,8 @@ supported keys are:
 Values must be in the format specified by the [OCI Image Specification](https://github.com/opencontainers/image-spec/blob/c05acf7eb327dae4704a4efe01253a0e60af6b34/config.md?plain=1#L131-L209).
 
 The `annotations` section allows defining annotations for the image manifest.
+
+## Related Work
+
+- [regclient](https://github.com/regclient/regclient)
+- [oci-client](https://github.com/oras-project/rust-oci-client)
