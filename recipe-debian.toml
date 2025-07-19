@@ -4,7 +4,7 @@ image = "registry-1.docker.io/library/debian:bookworm"
 [target]
 registry = "ghcr.io"
 repo = "$GITHUB_REPOSITORY"
-tags = ["clear", "$RELEASE_TAG-clear"]
+tags = ["debian", "$RELEASE_TAG-debian"]
 auth = ["$GITHUB_ACTOR", "$GITHUB_TOKEN"]
 
 [modification]
