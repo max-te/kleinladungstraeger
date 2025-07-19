@@ -50,13 +50,13 @@ jobs:
           echo "distroless=$(cat ./distroless.digest)" >> $GITHUB_OUTPUT
           echo "::endgroup::"
 
-          echo "::group::Build clearlinux image"
-          ./target/release/klt --digest-file ./clear.digest recipe-clear.toml
-          echo "clear=$(cat ./clear.digest)" >> $GITHUB_OUTPUT
+          echo "::group::Build debian image"
+          ./target/release/klt --digest-file ./debian.digest recipe-debian.toml
+          echo "debian=$(cat ./debian.digest)" >> $GITHUB_OUTPUT
           echo "::endgroup::"
 
           echo "distroless digest: $(cat ./distroless.digest)" >> $GITHUB_STEP_SUMMARY
-          echo "clear digest: $(cat ./clear.digest)" >> $GITHUB_STEP_SUMMARY
+          echo "debian digest: $(cat ./debian.digest)" >> $GITHUB_STEP_SUMMARY
 
       - name: Docker Login for attestation
         run: docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
@@ -66,11 +66,11 @@ jobs:
           subject-name: ghcr.io/max-te/kleinladungstraeger
           subject-digest: "${{ steps.images.outputs.distroless }}"
           # push-to-registry: true
-      - name: Generate artifact attestation (clearlinux)
+      - name: Generate artifact attestation (debian image)
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ghcr.io/max-te/kleinladungstraeger
-          subject-digest: "${{ steps.images.outputs.clear }}"
+          subject-digest: "${{ steps.images.outputs.debian }}"
           # push-to-registry: true
 
       - name: Commit and push updated Cargo.toml

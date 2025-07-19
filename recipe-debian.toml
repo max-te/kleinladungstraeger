@@ -1,5 +1,5 @@
 [base]
-image = "registry-1.docker.io/library/clearlinux:base"
+image = "registry-1.docker.io/library/debian:bookworm"
 
 [target]
 registry = "ghcr.io"
