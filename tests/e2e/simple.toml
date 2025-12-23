@@ -1,0 +1,10 @@
+[base]
+image = "gcr.io/distroless/cc-debian12:latest"
+
+[target]
+registry = "$REGISTRY"
+repo = "simple"
+tags = ["latest", "integration"]
+
+[modification]
+app_layer_folder = "src"

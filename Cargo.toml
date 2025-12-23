@@ -8,7 +8,7 @@ name = "klt"
 path = "src/main.rs"
 
 [dependencies]
-reqwest = { version = "0.12.15", features = ["json"] }
+reqwest = { version = "0.12.15", features = ["json", "rustls-tls-native-roots"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
@@ -35,4 +35,6 @@ nutype = { version = "0.6.1", features = ["serde", "regex"] }
 temp-env = "0.3.6"
 tempfile = "3.19.1"
 test-log = { version = "0.2.17", features = ["trace"] }
+testcontainers = "0.26.0"
 wiremock = "0.6.3"
+rcgen = "0.13"
