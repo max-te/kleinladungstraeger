@@ -7,7 +7,7 @@ use oci_spec::image::{Arch, Os};
 use recipe::Recipe;
 use registry_client::ClientScope;
 use tracing::{debug, info};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 mod app_layer;
 mod kitchen;
@@ -33,6 +33,10 @@ async fn main() -> Result<()> {
     setup_logging_tracing()?;
 
     let args = Args::parse();
+    run(args).await
+}
+
+async fn run(args: Args) -> Result<()> {
     let recipe: Recipe = crate::recipe::load_recipe(args.recipe_file)?;
     debug!("{:?}", &recipe);
 
@@ -44,7 +48,12 @@ async fn main() -> Result<()> {
     )
     .await
     .context("creating base image registry client")?;
-    let base_tag = recipe.base.image.digest().or(recipe.base.image.tag()).unwrap_or("latest");
+    let base_tag = recipe
+        .base
+        .image
+        .digest()
+        .or(recipe.base.image.tag())
+        .unwrap_or("latest");
     let base = base_provider
         .get_tag_for_target(base_tag, Arch::Amd64, Os::Linux)
         .map_err(|e| e.context("getting base image"));
