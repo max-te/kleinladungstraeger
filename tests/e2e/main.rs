@@ -34,13 +34,13 @@ async fn simple_build_to_registry() -> Result<(), Box<dyn std::error::Error>> {
         .start()
         .await
         .unwrap();
-    let host = container.get_host().await?;
+    let host_name = container.get_host().await?;
     let host_port = container.get_host_port_ipv4(5000).await?;
-    let url = format!("{host}:{host_port}");
+    let host = format!("{host_name}:{host_port}");
 
     let result = Command::new(env!("CARGO_BIN_EXE_klt"))
         .arg("tests/e2e/simple.toml")
-        .env("REGISTRY", &url)
+        .env("REGISTRY", &host)
         // SSL_CERT_FILE is a convention for specifying the path to a CA root certificate
         // rustls picks it up automatically via openssl-probe
         .env("SSL_CERT_FILE", cert_path.to_str().unwrap())
@@ -48,6 +48,22 @@ async fn simple_build_to_registry() -> Result<(), Box<dyn std::error::Error>> {
         .wait_with_output()
         .await?;
     assert!(result.status.success());
+
+    // Pull the pushed image to verify it was successfully pushed
+    let pull_result = Command::new("docker")
+        .args(&["pull", &format!("{}/simple:latest", host)])
+        .env("SSL_CERT_FILE", cert_path.to_str().unwrap())
+        .spawn()?
+        .wait_with_output()
+        .await?;
+    assert!(pull_result.status.success());
+
+    // Cleanup
+    Command::new("docker")
+        .args(&["rmi", &format!("{}/simple:latest", host)])
+        .spawn()?
+        .wait_with_output()
+        .await?;
 
     Ok(())
 }
