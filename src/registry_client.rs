@@ -58,7 +58,7 @@ impl<SCHEME: Scheme> RegistryClient<SCHEME> {
     }
 
     #[tracing::instrument(skip_all)]
-    async fn probe_for_token_endpoint(registry: impl ToString) -> Result<String> {
+    async fn probe_for_token_endpoint(registry: impl ToString) -> Result<Option<String>> {
         let registry = registry.to_string();
         let url = Url::parse(&format!("{scheme}://{registry}/v2/", scheme = SCHEME::STR))
             .into_diagnostic()?;
@@ -73,18 +73,23 @@ impl<SCHEME: Scheme> RegistryClient<SCHEME> {
                 let realm = captures.get(1).unwrap().as_str();
                 let service = captures.get(2).unwrap().as_str();
                 debug!("Found WWW-Authenticate realm: {realm} in {wwwauth:?}");
-                Ok(Url::parse_with_params(realm, [("service", service)])
-                    .unwrap()
-                    .to_string())
+                Ok(Some(
+                    Url::parse_with_params(realm, [("service", service)])
+                        .unwrap()
+                        .to_string(),
+                ))
             } else {
                 Err(miette::miette!("No WWW-Authenticate header"))
             }
+        } else if resp.status().is_success() {
+            debug!("Registry allows anonymous access, using empty token");
+            Ok(None)
         } else {
             debug!("No WWW-Authenticate header but not 401, falling back to token endpoint.",);
-            Ok(format!(
+            Ok(Some(format!(
                 "{scheme}://{registry}/v2/token",
                 scheme = SCHEME::STR
-            ))
+            )))
         }
     }
 
@@ -96,31 +101,35 @@ impl<SCHEME: Scheme> RegistryClient<SCHEME> {
     ) -> Result<Self> {
         let registry = registry.to_string();
         let repo = repo.to_string();
-        let realm = Self::probe_for_token_endpoint(&registry).await?;
-        let token_url =
-            Url::parse_with_params(&realm, [("scope", format!("repository:{repo}:{scope}"))])
+
+        let mut client_builder = Client::builder();
+
+        if let Some(realm) = Self::probe_for_token_endpoint(&registry).await? {
+            let token_url =
+                Url::parse_with_params(&realm, [("scope", format!("repository:{repo}:{scope}"))])
+                    .into_diagnostic()?;
+
+            let token_resp = Client::default()
+                .get(token_url)
+                .send()
+                .await
+                .into_diagnostic()?
+                .error_for_status()
+                .into_diagnostic()?
+                .json::<serde_json::Value>()
+                .await
                 .into_diagnostic()?;
+            let token = token_resp.get("token").unwrap().as_str().unwrap();
+            debug!("Anonymous token: {token}");
 
-        let token_resp = Client::default()
-            .get(token_url)
-            .send()
-            .await
-            .into_diagnostic()?
-            .error_for_status()
-            .into_diagnostic()?
-            .json::<serde_json::Value>()
-            .await
-            .into_diagnostic()?;
-        let token = token_resp.get("token").unwrap().as_str().unwrap();
-        debug!("Anonymous token: {token}");
+            client_builder =
+                client_builder.default_headers(reqwest::header::HeaderMap::from_iter([(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {token}").parse().unwrap(),
+                )]));
+        }
 
-        let client = Client::builder()
-            .default_headers(reqwest::header::HeaderMap::from_iter([(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {token}").parse().unwrap(),
-            )]))
-            .build()
-            .into_diagnostic()?;
+        let client = client_builder.build().into_diagnostic()?;
 
         Ok(Self {
             client,
@@ -141,7 +150,11 @@ impl<SCHEME: Scheme> RegistryClient<SCHEME> {
         let registry = registry.to_string();
         let repo = repo.to_string();
 
-        let realm = Self::probe_for_token_endpoint(&registry).await?;
+        let realm = Self::probe_for_token_endpoint(&registry)
+            .await?
+            .ok_or_else(|| {
+                miette::miette!("Basic auth should be required for {registry}, but wasn't")
+            })?;
         let token_url =
             Url::parse_with_params(&realm, [("scope", format!("repository:{repo}:{scope}"))])
                 .into_diagnostic()?;
@@ -158,13 +171,13 @@ impl<SCHEME: Scheme> RegistryClient<SCHEME> {
             .into_diagnostic()?;
         let token = token_resp.get("token").unwrap().as_str().unwrap();
 
-        let client = Client::builder()
-            .default_headers(reqwest::header::HeaderMap::from_iter([(
+        let mut client_builder =
+            Client::builder().default_headers(reqwest::header::HeaderMap::from_iter([(
                 reqwest::header::AUTHORIZATION,
                 format!("Bearer {token}").parse().unwrap(),
-            )]))
-            .build()
-            .into_diagnostic()?;
+            )]));
+
+        let client = client_builder.build().into_diagnostic()?;
 
         Ok(Self {
             client,
@@ -411,8 +424,8 @@ mod tests {
     use std::str::FromStr;
     use test_log::test;
     use wiremock::{
-        matchers::{method, path},
         Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
     };
 
     struct HttpScheme;
