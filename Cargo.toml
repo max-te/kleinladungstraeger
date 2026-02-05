@@ -19,7 +19,7 @@ sha2 = "0.10.8"
 base16ct = { version = "0.2.0", features = ["std"] }
 futures = "0.3.31"
 miette = { version = "7.5", features = ["fancy"] }
-bytes = "1.10.1"
+bytes = "1.11.1"
 toml = "0.8.20"
 shellexpand = "3.1.1"
 secrecy = { version = "0.10.3", features = ["serde"] }
