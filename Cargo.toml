@@ -16,7 +16,7 @@ oci-spec = "0.8.4"
 flate2 = "1.1.9"
 tar = "0.4.44"
 sha2 = "0.10.9"
-base16ct = { version = "0.2.0", features = ["std"] }
+base16ct = { version = "1.0.0", features = ["alloc"] }
 futures = "0.3.32"
 miette = { version = "7.6", features = ["fancy"] }
 bytes = "1.11.1"
