@@ -66,10 +66,10 @@ impl<SCHEME: Scheme> RegistryClient<SCHEME> {
         let resp = reqwest::get(url).await.into_diagnostic()?;
         if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
             if let Some(wwwauth) = resp.headers().get("WWW-Authenticate") {
-                let captures = regex::Regex::new(r#"Bearer realm="([^"]+)",service="([^"]+)""#)
+                let captures = regex::Regex::new(r#"Bearer realm="([^"]+)",service="?([^"]+)"#)
                     .unwrap()
                     .captures(wwwauth.to_str().unwrap())
-                    .unwrap();
+                    .ok_or_else(|| miette::miette!("WWW-Authenticate header should follow realm=...,service=... pattern, was {wwwauth:?}"))?;
                 let realm = captures.get(1).unwrap().as_str();
                 let service = captures.get(2).unwrap().as_str();
                 debug!("Found WWW-Authenticate realm: {realm} in {wwwauth:?}");
