@@ -19,7 +19,7 @@ async fn simple_build_to_registry() -> Result<(), Box<dyn std::error::Error>> {
     let certified_key = rcgen::generate_simple_self_signed(subject_alt_names)?;
 
     fs::write(&cert_path, certified_key.cert.pem())?;
-    fs::write(&key_path, certified_key.key_pair.serialize_pem())?;
+    fs::write(&key_path, certified_key.signing_key.serialize_pem())?;
 
     // Start registry container with HTTPS and mounted certificates
     let container = GenericImage::new("registry", "3")
