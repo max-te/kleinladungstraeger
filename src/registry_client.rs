@@ -171,7 +171,7 @@ impl<SCHEME: Scheme> RegistryClient<SCHEME> {
             .into_diagnostic()?;
         let token = token_resp.get("token").unwrap().as_str().unwrap();
 
-        let mut client_builder =
+        let client_builder =
             Client::builder().default_headers(reqwest::header::HeaderMap::from_iter([(
                 reqwest::header::AUTHORIZATION,
                 format!("Bearer {token}").parse().unwrap(),
