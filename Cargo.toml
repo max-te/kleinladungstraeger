@@ -8,33 +8,33 @@ name = "klt"
 path = "src/main.rs"
 
 [dependencies]
-reqwest = { version = "0.12.15", features = ["json", "rustls-tls-native-roots"] }
+reqwest = { version = "0.12.28", features = ["json", "rustls-tls-native-roots"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
-oci-spec = "0.8.0"
-flate2 = "1.1.1"
+oci-spec = "0.8.4"
+flate2 = "1.1.9"
 tar = "0.4.44"
-sha2 = "0.10.8"
+sha2 = "0.10.9"
 base16ct = { version = "0.2.0", features = ["std"] }
-futures = "0.3.31"
-miette = { version = "7.5", features = ["fancy"] }
+futures = "0.3.32"
+miette = { version = "7.6", features = ["fancy"] }
 bytes = "1.11.1"
-toml = "0.8.20"
-shellexpand = "3.1.1"
+toml = "0.8.23"
+shellexpand = "3.1.2"
 secrecy = { version = "0.10.3", features = ["serde"] }
 better-panic = "0.3.0"
-tracing = "0.1.41"
-tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-regex = "1.11.1"
-serde_with = "3.12.0"
-clap = { version = "4.5.55", features = ["derive"] }
-nutype = { version = "0.6.1", features = ["serde", "regex"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+regex = "1.12.3"
+serde_with = "3.17.0"
+clap = { version = "4.5.60", features = ["derive"] }
+nutype = { version = "0.6.2", features = ["serde", "regex"] }
 
 [dev-dependencies]
 temp-env = "0.3.6"
-tempfile = "3.24.0"
-test-log = { version = "0.2.17", features = ["trace"] }
-testcontainers = "0.26.0"
-wiremock = "0.6.3"
+tempfile = "3.26.0"
+test-log = { version = "0.2.19", features = ["trace"] }
+testcontainers = "0.26.3"
+wiremock = "0.6.5"
 rcgen = "0.13"

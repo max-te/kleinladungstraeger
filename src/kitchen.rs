@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::{future::Future, pin::Pin};
 
-use futures::stream::FuturesUnordered;
 use futures::TryStreamExt;
+use futures::stream::FuturesUnordered;
 use miette::Result;
 use oci_spec::image::HistoryBuilder;
 use oci_spec::image::ImageManifest;
@@ -71,12 +71,15 @@ impl PreparationState {
             .rootfs_mut()
             .diff_ids_mut()
             .push(layer.diff_id.to_string());
-        self.configuration.history_mut().push(
-            HistoryBuilder::default()
-                .created_by(&layer.created_by)
-                .build()
-                .unwrap(),
-        );
+        self.configuration
+            .history_mut()
+            .get_or_insert_default()
+            .push(
+                HistoryBuilder::default()
+                    .created_by(&layer.created_by)
+                    .build()
+                    .unwrap(),
+            );
         self.manifest.layers_mut().push(layer.descriptor.clone());
         self.own_layers.push(layer);
     }
@@ -129,16 +132,19 @@ impl PreparationState {
             labels.extend(new_labels.iter().map(|(k, v)| (k.clone(), v.clone())));
             exec_config.set_labels(Some(labels));
         }
-        self.configuration.history_mut().push(
-            HistoryBuilder::default()
-                .empty_layer(true)
-                .created_by(format!(
-                    "KLT CONFIG {}",
-                    serde_json::to_string(&exec_config).unwrap()
-                ))
-                .build()
-                .unwrap(),
-        );
+        self.configuration
+            .history_mut()
+            .get_or_insert_default()
+            .push(
+                HistoryBuilder::default()
+                    .empty_layer(true)
+                    .created_by(format!(
+                        "KLT CONFIG {}",
+                        serde_json::to_string(&exec_config).unwrap()
+                    ))
+                    .build()
+                    .unwrap(),
+            );
         self.configuration.set_config(Some(exec_config));
     }
 
