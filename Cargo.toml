@@ -33,7 +33,7 @@ nutype = { version = "0.6.2", features = ["serde", "regex"] }
 
 [dev-dependencies]
 temp-env = "0.3.6"
-tempfile = "3.26.0"
+tempfile = "3.27.0"
 test-log = { version = "0.2.19", features = ["trace"] }
 testcontainers = "0.27.1"
 wiremock = "0.6.5"
