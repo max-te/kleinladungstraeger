@@ -27,7 +27,7 @@ better-panic = "0.3.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 regex = "1.12.3"
-serde_with = "3.17.0"
+serde_with = "3.18.0"
 clap = { version = "4.5.60", features = ["derive"] }
 nutype = { version = "0.6.2", features = ["serde", "regex"] }
 
