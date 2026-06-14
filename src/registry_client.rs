@@ -417,6 +417,20 @@ impl<SCHEME: Scheme> RegistryClient<SCHEME> {
 }
 
 #[cfg(test)]
+impl RegistryClient {
+    /// Construct a RegistryClient without network calls — only for unit tests
+    /// that don't exercise registry operations.
+    pub(crate) fn test_dummy(registry: &str, repo: &str) -> Self {
+        Self {
+            client: reqwest::Client::new(),
+            registry: registry.to_string(),
+            repo: repo.to_string(),
+            scheme: PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use oci_spec::image::{Arch, Os};
