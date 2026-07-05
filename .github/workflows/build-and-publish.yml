@@ -56,6 +56,9 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::Build debian image"
+          # Include system CA certs for the debian image (doesn't ship ca-certificates)
+          mkdir -p ./target/docker/etc/ssl/certs
+          cp /etc/ssl/certs/ca-certificates.crt ./target/docker/etc/ssl/certs/
           ./target/x86_64-unknown-linux-musl/release/klt --digest-file ./debian.digest recipe-debian.toml
           echo "debian=$(cat ./debian.digest)" >> $GITHUB_OUTPUT
           echo "::endgroup::"
